@@ -1,0 +1,21 @@
+{
+    "manifest_version": 3,
+    "name": "Polymarket Price Alert",
+    "version": "1.0",
+    "description": "Set price alerts on Polymarket markets.",
+    "permissions": ["notifications", "scripting"],
+    "host_permissions": ["https://polymarket.com/*"],
+    "background": {
+      "service_worker": "background.js"
+    },
+    "content_scripts": [
+      {
+        "matches": ["https://polymarket.com/event/*"],
+        "js": ["content.js"]
+      }
+    ],
+    "action": {
+      "default_title": "Polymarket Alert"
+    }
+  }
+  
