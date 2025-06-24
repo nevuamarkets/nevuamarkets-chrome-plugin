@@ -1,4 +1,6 @@
 import { build } from 'esbuild';
+import { copyFileSync, mkdirSync } from 'fs';
+import { dirname } from 'path';
 
 // Custom plugin to stub out Node.js modules with browser-compatible versions
 function stubPlugin(moduleName) {
@@ -30,3 +32,12 @@ await build({
     js: 'var process = { env: { LOG_LEVEL: "warn" } };'
   }
 }); 
+
+// Copy icon to dist folder
+try {
+  mkdirSync('dist', { recursive: true });
+  copyFileSync('icon128.png', 'dist/icon128.png');
+  console.log('✅ Icon copied to dist/icon128.png');
+} catch (err) {
+  console.error('❌ Failed to copy icon:', err.message);
+} 

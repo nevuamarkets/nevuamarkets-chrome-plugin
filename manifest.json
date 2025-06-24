@@ -19,8 +19,8 @@
       "default_title": "Polymarket Alert",
       "default_popup": "popup.html"
     },
-    "icons": {
-      "128": "icon128.png"
-    }
+      "icons": {
+    "128": "dist/icon128.png"
+  }
   }
   
