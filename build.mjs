@@ -18,10 +18,11 @@ await build({
   entryPoints: ['content.js', 'background.js', 'popup.js'],
   bundle: true,
   minify: true,
-  sourcemap: false,
+  sourcemap: process.env.NODE_ENV !== 'production', // Only include sourcemaps in dev
   outdir: 'dist',
   platform: 'browser',
   target: ['chrome110'],
+  treeShaking: true,
   define: {
     'process.env.NODE_ENV': '"production"',
     global: 'globalThis', // Use globalThis instead of window for service worker compatibility

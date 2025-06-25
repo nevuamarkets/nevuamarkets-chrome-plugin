@@ -4,7 +4,10 @@
   "main": "background.js",
   "scripts": {
     "build": "node build.mjs",
-    "test": "echo \"No tests\""
+    "build:prod": "node build.mjs",
+    "lint": "echo \"No linting configured - add ESLint if needed\"",
+    "test": "echo \"No tests configured - add testing framework if needed\"",
+    "package": "npm run build:prod && node package.mjs"
   },
   "keywords": [],
   "author": "",
@@ -14,6 +17,7 @@
     "@nevuamarkets/poly-websockets": "^0.1.5"
   },
   "devDependencies": {
-    "esbuild": "^0.25.5"
+    "esbuild": "^0.25.5",
+    "archiver": "^7.0.1"
   }
 }

@@ -1,26 +1,26 @@
 {
-    "manifest_version": 3,
-    "name": "Nevua Markets - Polymarket Price Alerts",
-    "version": "1.0",
-    "description": "Set price alerts on Polymarket markets.",
-    "permissions": ["notifications", "scripting", "storage"],
-    "host_permissions": ["https://polymarket.com/*"],
-    "background": {
-      "service_worker": "dist/background.js"
-    },
-    "content_scripts": [
-      {
-        "matches": ["https://polymarket.com/*"],
-        "js": ["dist/content.js"],
-        "run_at": "document_end"
-      }
-    ],
-    "action": {
-      "default_title": "Polymarket Alert",
-      "default_popup": "popup.html"
-    },
-      "icons": {
-    "128": "dist/icon128.png"
+  "manifest_version": 3,
+  "name": "Nevua Markets - Polymarket Price Alerts",
+  "version": "1.0.0",
+  "description": "Set price alerts on Polymarket markets.",
+  "permissions": ["notifications", "scripting", "storage"],
+  "host_permissions": ["https://polymarket.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://polymarket.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_title": "Polymarket Alert",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "128": "icon128.png"
   }
-  }
+}
   
