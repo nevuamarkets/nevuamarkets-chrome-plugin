@@ -1,42 +1,240 @@
 var process = { env: { LOG_LEVEL: "error" } };
-(()=>{var n=[];function y(){return new Promise(e=>{chrome.storage.local.get(["polymarket_alerts"],t=>{if(chrome.runtime.lastError){console.error("Nevua: Error loading alerts:",chrome.runtime.lastError),e([]);return}let r=t.polymarket_alerts||[];r.forEach(l=>{l.status==="active"?l.status="Active":l.status==="paused"&&(l.status="Paused")}),e(r)})})}function c(){chrome.storage.local.set({polymarket_alerts:n},()=>{if(chrome.runtime.lastError){console.error("Nevua: Error saving alerts:",chrome.runtime.lastError);return}chrome.runtime.sendMessage({type:"alert_updated",alerts:n},e=>{chrome.runtime.lastError&&console.error("Nevua: Failed to broadcast alert update:",chrome.runtime.lastError)}),k()})}async function k(){let e=n.filter(t=>t.status==="Active"&&!t.closed).map(t=>t.clobtokenId);chrome.runtime.sendMessage({type:"update_subscriptions",needed:e},t=>{chrome.runtime.lastError&&console.error("Nevua: Failed to update subscriptions:",chrome.runtime.lastError)})}function b(e){let t=n.find(r=>r.id===e);t&&!t.closed&&(t.status=t.status==="Active"?"Paused":"Active",c(),a())}function E(e){let t=n.findIndex(r=>r.id===e);t!==-1&&(n.splice(t,1),c(),a())}function C(e){let t=[];switch(e){case"closed":t=n.filter(r=>r.closed);break;case"paused":t=n.filter(r=>r.status==="Paused");break;case"all":t=[...n];break}t.length>0&&(t.forEach(r=>{let l=n.findIndex(s=>s.id===r.id);l!==-1&&n.splice(l,1)}),c(),a())}function A(){let e=document.getElementById("bulkClearBtn"),t=document.getElementById("bulkClearSelect");!e||!t||(e.removeEventListener("click",u),t.removeEventListener("change",d),t.addEventListener("change",d),e.addEventListener("click",u))}function d(){let e=document.getElementById("bulkClearBtn");this.value===""?(e.disabled=!0,e.style.background="#9ca3af",e.style.cursor="not-allowed"):(e.disabled=!1,e.style.background="#dc2626",e.style.cursor="pointer")}function u(){let e=document.getElementById("bulkClearSelect");if(this.disabled)return;let t=e.value;C(t),e.value="",this.disabled=!0,this.style.background="#9ca3af",this.style.cursor="not-allowed"}function $(){let e=document.getElementById("alertCount");if(!e)return;let t=n.filter(r=>r.status==="Active"&&!r.closed).length;e.textContent=t,chrome.runtime.sendMessage({type:"update_badge",count:t})}function a(){let e=document.getElementById("alertsContainer"),t=document.getElementById("loading"),r=document.getElementById("noAlerts"),l=document.getElementById("bulkClearControls");e&&(t.style.display="none",l&&(n.length>0?(l.style.display="flex",A()):l.style.display="none"),e.querySelectorAll(".alert-item").forEach(s=>s.remove()),n.length===0?r.style.display="block":(r.style.display="none",n.forEach(s=>{let o=document.createElement("div");o.className="alert-item";let m=s.marketQuestion.length>35?s.marketQuestion.substring(0,32)+"...":s.marketQuestion,g=s.lastTriggeredAtMS>0?new Date(s.lastTriggeredAtMS).toLocaleString():"Never",v=s.eventTitle!==s.marketQuestion?`<div class="alert-details" title="${s.eventTitle}">Event: ${s.eventTitle.length>35?s.eventTitle.substring(0,32)+"...":s.eventTitle}</div>`:"",i=s.closed,f=i?"disabled":"",h=i?"opacity: 0.5; pointer-events: none;":"",p=i?"Market is closed":s.status==="Active"?"Pause this alert":"Resume this alert";o.innerHTML=`
-        <div class="status-dot ${s.status.toLowerCase()}"></div>
+(() => {
+  // popup.js
+  var activeAlerts = [];
+  function loadAlertsFromStorage() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(["polymarket_alerts"], (result) => {
+        if (chrome.runtime.lastError) {
+          console.error("Nevua: Error loading alerts:", chrome.runtime.lastError);
+          resolve([]);
+          return;
+        }
+        const savedAlerts = result.polymarket_alerts || [];
+        savedAlerts.forEach((alert) => {
+          if (alert.status === "active") {
+            alert.status = "Active";
+          } else if (alert.status === "paused") {
+            alert.status = "Paused";
+          }
+        });
+        resolve(savedAlerts);
+      });
+    });
+  }
+  function saveAlertsToStorage() {
+    chrome.storage.local.set({ "polymarket_alerts": activeAlerts }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Nevua: Error saving alerts:", chrome.runtime.lastError);
+        return;
+      }
+      chrome.runtime.sendMessage({
+        type: "alert_updated",
+        alerts: activeAlerts
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Nevua: Failed to broadcast alert update:", chrome.runtime.lastError);
+        }
+      });
+      ensureSubscriptions();
+    });
+  }
+  async function ensureSubscriptions() {
+    const needed = activeAlerts.filter((a) => a.status === "Active" && !a.closed).map((a) => a.clobtokenId);
+    chrome.runtime.sendMessage({
+      type: "update_subscriptions",
+      needed
+    }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("Nevua: Failed to update subscriptions:", chrome.runtime.lastError);
+      }
+    });
+  }
+  function toggleAlert(alertId) {
+    const alert = activeAlerts.find((a) => a.id === alertId);
+    if (alert && !alert.closed) {
+      alert.status = alert.status === "Active" ? "Paused" : "Active";
+      saveAlertsToStorage();
+      renderAlertsList();
+    }
+  }
+  function deleteAlert(alertId) {
+    const alertIndex = activeAlerts.findIndex((a) => a.id === alertId);
+    if (alertIndex !== -1) {
+      activeAlerts.splice(alertIndex, 1);
+      saveAlertsToStorage();
+      renderAlertsList();
+    }
+  }
+  function performBulkClear(clearType) {
+    let alertsToDelete = [];
+    switch (clearType) {
+      case "closed":
+        alertsToDelete = activeAlerts.filter((a) => a.closed);
+        break;
+      case "paused":
+        alertsToDelete = activeAlerts.filter((a) => a.status === "Paused");
+        break;
+      case "all":
+        alertsToDelete = [...activeAlerts];
+        break;
+    }
+    if (alertsToDelete.length > 0) {
+      alertsToDelete.forEach((alertToDelete) => {
+        const index = activeAlerts.findIndex((a) => a.id === alertToDelete.id);
+        if (index !== -1) {
+          activeAlerts.splice(index, 1);
+        }
+      });
+      saveAlertsToStorage();
+      renderAlertsList();
+    }
+  }
+  function setupBulkClearControls() {
+    const bulkClearBtn = document.getElementById("bulkClearBtn");
+    const bulkClearSelect = document.getElementById("bulkClearSelect");
+    if (!bulkClearBtn || !bulkClearSelect) return;
+    bulkClearBtn.removeEventListener("click", handleBulkClearClick);
+    bulkClearSelect.removeEventListener("change", handleBulkClearSelectChange);
+    bulkClearSelect.addEventListener("change", handleBulkClearSelectChange);
+    bulkClearBtn.addEventListener("click", handleBulkClearClick);
+  }
+  function handleBulkClearSelectChange() {
+    const bulkClearBtn = document.getElementById("bulkClearBtn");
+    if (this.value === "") {
+      bulkClearBtn.disabled = true;
+      bulkClearBtn.style.background = "#9ca3af";
+      bulkClearBtn.style.cursor = "not-allowed";
+    } else {
+      bulkClearBtn.disabled = false;
+      bulkClearBtn.style.background = "#dc2626";
+      bulkClearBtn.style.cursor = "pointer";
+    }
+  }
+  function handleBulkClearClick() {
+    const bulkClearSelect = document.getElementById("bulkClearSelect");
+    if (this.disabled) return;
+    const clearType = bulkClearSelect.value;
+    performBulkClear(clearType);
+    bulkClearSelect.value = "";
+    this.disabled = true;
+    this.style.background = "#9ca3af";
+    this.style.cursor = "not-allowed";
+  }
+  function updateAlertCount() {
+    const countElement = document.getElementById("alertCount");
+    if (!countElement) return;
+    const activeCount = activeAlerts.filter((a) => a.status === "Active" && !a.closed).length;
+    countElement.textContent = activeCount;
+    chrome.runtime.sendMessage({
+      type: "update_badge",
+      count: activeCount
+    });
+  }
+  function renderAlertsList() {
+    const alertsContainer = document.getElementById("alertsContainer");
+    const loading = document.getElementById("loading");
+    const noAlerts = document.getElementById("noAlerts");
+    const bulkClearControls = document.getElementById("bulkClearControls");
+    if (!alertsContainer) return;
+    loading.style.display = "none";
+    if (bulkClearControls) {
+      if (activeAlerts.length > 0) {
+        bulkClearControls.style.display = "flex";
+        setupBulkClearControls();
+      } else {
+        bulkClearControls.style.display = "none";
+      }
+    }
+    alertsContainer.querySelectorAll(".alert-item").forEach((item) => item.remove());
+    if (activeAlerts.length === 0) {
+      noAlerts.style.display = "block";
+    } else {
+      noAlerts.style.display = "none";
+      activeAlerts.forEach((alert) => {
+        const alertItem = document.createElement("div");
+        alertItem.className = "alert-item";
+        const truncatedTitle = alert.marketQuestion.length > 35 ? alert.marketQuestion.substring(0, 32) + "..." : alert.marketQuestion;
+        const lastTriggeredDate = alert.lastTriggeredAtMS > 0 ? new Date(alert.lastTriggeredAtMS).toLocaleString() : "Never";
+        const eventLine = alert.eventTitle !== alert.marketQuestion ? `<div class="alert-details" title="${alert.eventTitle}">Event: ${alert.eventTitle.length > 35 ? alert.eventTitle.substring(0, 32) + "..." : alert.eventTitle}</div>` : "";
+        const isMarketClosed = alert.closed;
+        const toggleButtonDisabled = isMarketClosed ? "disabled" : "";
+        const toggleButtonStyle = isMarketClosed ? "opacity: 0.5; pointer-events: none;" : "";
+        const toggleButtonTitle = isMarketClosed ? "Market is closed" : alert.status === "Active" ? "Pause this alert" : "Resume this alert";
+        alertItem.innerHTML = `
+        <div class="status-dot ${alert.status.toLowerCase()}"></div>
         <div class="alert-content">
           <!-- Title row with buttons -->
           <div class="alert-title">
-            <div class="alert-title-text" title="${s.marketQuestion}">
-              <a href="https://polymarket.com/event/${s.slug}" target="_blank">${m}</a>
+            <div class="alert-title-text" title="${alert.marketQuestion}">
+              <a href="https://polymarket.com/event/${alert.slug}" target="_blank">${truncatedTitle}</a>
             </div>
             <div class="alert-actions">
-              <button class="action-btn toggle-alert" data-id="${s.id}" ${f} style="${h}" title="${p}">${s.status==="Active"?"\u23F8\uFE0F":"\u25B6\uFE0F"}</button>
-              <button class="action-btn delete-alert" data-id="${s.id}" title="Delete this alert permanently">\u{1F5D1}\uFE0F</button>
+              <button class="action-btn toggle-alert" data-id="${alert.id}" ${toggleButtonDisabled} style="${toggleButtonStyle}" title="${toggleButtonTitle}">${alert.status === "Active" ? "\u23F8\uFE0F" : "\u25B6\uFE0F"}</button>
+              <button class="action-btn delete-alert" data-id="${alert.id}" title="Delete this alert permanently">\u{1F5D1}\uFE0F</button>
             </div>
           </div>
           
           <!-- Event line (if different) -->
-          ${v}
+          ${eventLine}
           
-          ${i?`
+          ${isMarketClosed ? `
             <!-- Market closed status -->
             <div class="alert-details" style="color: #dc2626; font-weight: 600;" title="This market has been resolved">
-              Market closed: Outcome > ${s.outcome}
+              Market closed: Outcome > ${alert.outcome}
             </div>
-          `:`
+          ` : `
             <!-- Outcome and Price row -->
             <div class="alert-details" title="The outcome you're betting on and price threshold">
-              <span>Outcome: ${s.outcomeName}</span>
-              <span style="margin-left: 8px;">Price ${s.priceAlert.toLowerCase()} ${s.targetPrice}\xA2</span>
+              <span>Outcome: ${alert.outcomeName}</span>
+              <span style="margin-left: 8px;">Price ${alert.priceAlert.toLowerCase()} ${alert.targetPrice}\xA2</span>
             </div>
             
             <!-- Trigger row -->
             <div class="alert-details" title="How often this alert will trigger">
-              <span>Trigger: ${s.trigger}</span>
+              <span>Trigger: ${alert.trigger}</span>
             </div>
           `}
           
           <!-- Last triggered row -->
           <div class="alert-details" title="When this alert was last triggered">
-            <span>Last triggered: ${g} (${s.triggerCount} times)</span>
+            <span>Last triggered: ${lastTriggeredDate} (${alert.triggerCount} times)</span>
           </div>
         </div>
-      `,e.appendChild(o)}),e.querySelectorAll(".toggle-alert").forEach(s=>{s.addEventListener("click",function(){let o=this.dataset.id;b(o)})}),e.querySelectorAll(".delete-alert").forEach(s=>{s.addEventListener("click",function(){let o=this.dataset.id;E(o)})})),$())}document.addEventListener("DOMContentLoaded",async()=>{n=await y(),a(),chrome.storage.onChanged.addListener((e,t)=>{t==="local"&&e.polymarket_alerts&&(n=e.polymarket_alerts.newValue||[],a())})});chrome.runtime.onMessage.addListener((e,t,r)=>{if(e.type==="alert_update")return n=e.alerts,a(),!1});})();
+      `;
+        alertsContainer.appendChild(alertItem);
+      });
+      alertsContainer.querySelectorAll(".toggle-alert").forEach((button) => {
+        button.addEventListener("click", function() {
+          const alertId = this.dataset.id;
+          toggleAlert(alertId);
+        });
+      });
+      alertsContainer.querySelectorAll(".delete-alert").forEach((button) => {
+        button.addEventListener("click", function() {
+          const alertId = this.dataset.id;
+          deleteAlert(alertId);
+        });
+      });
+    }
+    updateAlertCount();
+  }
+  document.addEventListener("DOMContentLoaded", async () => {
+    activeAlerts = await loadAlertsFromStorage();
+    renderAlertsList();
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace === "local" && changes.polymarket_alerts) {
+        activeAlerts = changes.polymarket_alerts.newValue || [];
+        renderAlertsList();
+      }
+    });
+  });
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "alert_update") {
+      activeAlerts = message.alerts;
+      renderAlertsList();
+      return false;
+    }
+  });
+})();
+//# sourceMappingURL=popup.js.map

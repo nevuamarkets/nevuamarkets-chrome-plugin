@@ -14,9 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Content script injection for market data
 - Popup interface for managing alerts
 - Chrome Web Store ready package with optimized build
+- Review-friendly build option for easier Google review process
 
 ### Technical
 - Manifest V3 compliance
 - Production build optimizations (minification, tree-shaking)
+- Review build mode with unminified code and sourcemaps
 - Browser-compatible shims for Node.js modules
-- Proper ZIP packaging for Chrome Web Store submission 
+- Proper ZIP packaging for Chrome Web Store submission
+- Versioned ZIP filenames with production/review variants 

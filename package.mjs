@@ -8,6 +8,7 @@ import archiver from 'archiver';
 // Read package.json to get version
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
 const version = packageJson.version;
+const packageType = process.env.PACKAGE_TYPE || 'production';
 
 // Clean dist directory
 if (existsSync('dist')) {
@@ -26,20 +27,22 @@ function stubPlugin(moduleName) {
   };
 }
 
-console.log('🔨 Building extension for production...');
+console.log(`🔨 Building extension for ${packageType}...`);
 
-// Build with production optimizations
+const isReviewBuild = packageType === 'review';
+
+// Build with optimizations based on package type
 await build({
   entryPoints: ['content.js', 'background.js', 'popup.js'],
   bundle: true,
-  minify: true,
-  sourcemap: false, // Strip source maps for production
+  minify: !isReviewBuild, // Don't minify for review builds
+  sourcemap: isReviewBuild, // Include sourcemaps for review builds
   outdir: 'dist',
   platform: 'browser',
   target: ['chrome110'],
   treeShaking: true, // Enable tree shaking
   define: {
-    'process.env.NODE_ENV': '"production"',
+    'process.env.NODE_ENV': isReviewBuild ? '"review"' : '"production"',
     global: 'globalThis',
     "process.env.LOG_LEVEL": '"error"',
   },
@@ -73,7 +76,7 @@ try {
 // Create ZIP package
 console.log('📦 Creating ZIP package...');
 
-const zipFilename = `nevuamarkets-chrome-extension-${version}.zip`;
+const zipFilename = `nevuamarkets-chrome-extension-${version}${isReviewBuild ? '-review' : ''}.zip`;
 
 async function createZip() {
   const output = createWriteStream(zipFilename);

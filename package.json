@@ -4,10 +4,12 @@
   "main": "background.js",
   "scripts": {
     "build": "node build.mjs",
-    "build:prod": "node build.mjs",
+    "build:prod": "NODE_ENV=production node build.mjs",
+    "build:review": "NODE_ENV=review node build.mjs",
     "lint": "echo \"No linting configured - add ESLint if needed\"",
     "test": "echo \"No tests configured - add testing framework if needed\"",
-    "package": "npm run build:prod && node package.mjs"
+    "package": "npm run build:prod && node package.mjs",
+    "package:review": "npm run build:review && PACKAGE_TYPE=review node package.mjs"
   },
   "keywords": [],
   "author": "",

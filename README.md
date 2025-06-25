@@ -44,7 +44,9 @@ npm install
 |--------|-------------|
 | `npm run build` | Development build with sourcemaps |
 | `npm run build:prod` | Production build (minified, no sourcemaps) |
-| `npm run package` | Build and create Chrome Web Store ZIP |
+| `npm run build:review` | Review build (unminified, with sourcemaps) |
+| `npm run package` | Build and create Chrome Web Store ZIP (production) |
+| `npm run package:review` | Build and create Chrome Web Store ZIP (review-friendly) |
 | `npm run lint` | Run linting (placeholder - add ESLint if needed) |
 | `npm run test` | Run tests (placeholder - add testing framework if needed) |
 
@@ -68,11 +70,15 @@ npm install
 
 3. **Chrome Web Store Package**
    ```bash
+   # Production package (minified)
    npm run package
+   
+   # Review package (unminified, easier for Google reviewers)
+   npm run package:review
    ```
-   - Runs production build
-   - Creates versioned ZIP file: `nevuamarkets-chrome-extension-<version>.zip`
-   - Ready for Chrome Web Store upload
+   - Production: Creates `nevuamarkets-chrome-extension-<version>.zip`
+   - Review: Creates `nevuamarkets-chrome-extension-<version>-review.zip`
+   - Review builds are unminified with sourcemaps for easier code review
 
 ### Project Structure
 
@@ -141,15 +147,22 @@ The extension uses **esbuild** for fast, optimized bundling:
    npm version patch  # or minor/major
    
    # Update CHANGELOG.md with new version
-   # Run the packaging command
-   npm run package
+   # Create both packages
+   npm run package         # Production (minified)
+   npm run package:review  # Review-friendly (unminified)
    ```
 
 2. **Upload to Store**
    - Visit [Chrome Developer Dashboard](https://chrome.google.com/webstore/devconsole/)
-   - Upload the generated ZIP file
+   - **Recommended**: Upload the review package first (`-review.zip`) for easier code review by Google
+   - Alternatively, upload the production package if you prefer minified code
    - Complete store listing information
    - Submit for review
+
+3. **Review Process Tips**
+   - The review build (`-review.zip`) contains unminified code with sourcemaps
+   - This makes it significantly easier for Google reviewers to understand your code
+   - Both packages contain identical functionality, just different code formatting
 
 3. **Version Requirements**
    - Each upload must have a higher semantic version

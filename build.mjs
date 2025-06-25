@@ -14,17 +14,22 @@ function stubPlugin(moduleName) {
   };
 }
 
+const isProduction = process.env.NODE_ENV === 'production';
+const isReview = process.env.NODE_ENV === 'review';
+
+console.log(`🔨 Building in ${process.env.NODE_ENV || 'development'} mode...`);
+
 await build({
   entryPoints: ['content.js', 'background.js', 'popup.js'],
   bundle: true,
-  minify: true,
-  sourcemap: process.env.NODE_ENV !== 'production', // Only include sourcemaps in dev
+  minify: isProduction, // Only minify for production
+  sourcemap: !isProduction, // Include sourcemaps except for production
   outdir: 'dist',
   platform: 'browser',
   target: ['chrome110'],
   treeShaking: true,
   define: {
-    'process.env.NODE_ENV': '"production"',
+    'process.env.NODE_ENV': `"${process.env.NODE_ENV || 'development'}"`,
     global: 'globalThis', // Use globalThis instead of window for service worker compatibility
     "process.env.LOG_LEVEL": '"warn"',
   },

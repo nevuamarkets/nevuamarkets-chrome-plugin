@@ -1,5 +1,286 @@
 var process = { env: { LOG_LEVEL: "error" } };
-(()=>{async function h(){if(alertBoxInjected||document.getElementById("pm-alert-box"))return;let e=document.querySelector("#trade-widget");if(e){let t=A();if(t){let n=await _(t);C(e,n)}else C(e,null);alertBoxInjected=!0;return}setTimeout(()=>{!alertBoxInjected&&!document.getElementById("pm-alert-box")&&h()},500)}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",()=>{alertBoxInjected=!1,h(),k()}):(alertBoxInjected=!1,h(),k());var E=null;function k(){E&&clearInterval(E),E=setInterval(()=>{!alertBoxInjected&&!document.getElementById("pm-alert-box")&&h()},1e3)}window.addEventListener("popstate",()=>{alertBoxInjected=!1,k()});var I=location.href,x=A();setInterval(()=>{let e=location.href,t=A();e!==I&&(I=e,alertBoxInjected=!1,t!==x&&x&&(console.log(`Nevua: Slug changed from ${x} to ${t}, clearing old cache`),T.delete(x)),x=t,k())},1e3);document.addEventListener("visibilitychange",()=>{!document.hidden&&m&&setTimeout(()=>{m()},100)});var a=[],m=null,T=new Map,S=new Map,y=new Map,M=5e3,N=5*60*1e3;async function g(){let e=a.filter(t=>t.status==="Active"&&!t.closed).map(t=>t.clobtokenId);chrome.runtime.sendMessage({type:"update_subscriptions",needed:e},t=>{chrome.runtime.lastError&&console.error("Nevua: Failed to update subscriptions:",chrome.runtime.lastError)})}function w(){chrome.storage.local.set({polymarket_alerts:a},()=>{if(chrome.runtime.lastError){console.error("Nevua: Error saving alerts:",chrome.runtime.lastError);return}chrome.runtime.sendMessage({type:"alert_updated",alerts:a},e=>{chrome.runtime.lastError&&console.error("Nevua: Failed to broadcast alert update:",chrome.runtime.lastError)})})}function L(){return new Promise(e=>{chrome.storage.local.get(["polymarket_alerts"],t=>{if(chrome.runtime.lastError){console.error("Nevua: Error loading alerts:",chrome.runtime.lastError),e([]);return}let n=t.polymarket_alerts||[];n.forEach(r=>{r.status==="active"?r.status="Active":r.status==="paused"&&(r.status="Paused")}),e(n)})})}function q(e){chrome.storage.local.set({polymarket_widget_expanded:e},()=>{chrome.runtime.lastError&&console.error("Nevua: Error saving widget expand state:",chrome.runtime.lastError)})}function $(){return new Promise(e=>{chrome.storage.local.get(["polymarket_widget_expanded"],t=>{if(chrome.runtime.lastError){console.error("Nevua: Error loading widget expand state:",chrome.runtime.lastError),e(!0);return}let n=t.polymarket_widget_expanded!==!1;e(n)})})}chrome.runtime.onMessage.addListener((e,t,n)=>{if(e.type==="price_updates")return z(e.events),!1;if(e.type==="alert_update")return a=e.alerts,m&&m(),g(),!1});async function z(e){m&&setTimeout(()=>{L().then(t=>{a=t,m()})},100)}function A(){let e=window.location.pathname.match(/^\/event\/([^/]+)$/);return e?e[1]:null}async function _(e){let t=Date.now(),n=e,r=T.get(n);if(r&&t-r.timestamp<N)return console.log(`Nevua: Using cached market data for slug: ${e}`),r.data;let o=y.get(n);if(o)return console.log(`Nevua: Waiting for pending request for slug: ${e}`),await o;let i=S.get(n)||0;if(t-i<M)return console.log(`Nevua: Rate limited, using cached data for slug: ${e}`),r?r.data:null;console.log(`Nevua: Fetching fresh market data for slug: ${e}`);let s=P(e).then(l=>(S.set(n,t),l&&T.set(n,{data:l,timestamp:t}),y.delete(n),l)).catch(l=>{throw y.delete(n),l});return y.set(n,s),await s}async function P(e){try{let t=await fetch(`https://gamma-api.polymarket.com/events?slug=${e}`,{headers:{"User-Agent":"Nevua-Markets-Chrome-Extension/1.0"}});if(!t.ok)throw new Error(`API request failed: ${t.status}`);let n=await t.json();if(!n||!Array.isArray(n)||n.length===0)return console.error("Nevua: Invalid API response format"),null;let r=n[0],o={eventTitle:r.title,slug:r.slug,markets:[]};return r.markets&&Array.isArray(r.markets)&&r.markets.forEach(i=>{if(i.active===!0&&i.closed===!1)try{let s=JSON.parse(i.outcomes),l=JSON.parse(i.clobTokenIds);o.markets.push({conditionId:i.conditionId,question:i.question,outcomes:s,clobTokenIds:l})}catch(s){console.error("Nevua: Error parsing market data:",s)}}),o}catch(t){return console.error("Nevua: Error fetching market data:",t),null}}function j(e,t,n,r,o,i,s,l,u,c){return{id:crypto.randomUUID(),eventTitle:e,slug:t,conditionId:n,marketQuestion:r,outcomeIndex:o,outcomeName:i,clobtokenId:s,trigger:l==="once"?"One Time":"Recurring every 30 minutes",priceAlert:u.charAt(0).toUpperCase()+u.slice(1),targetPrice:c,lastTriggeredAtMS:0,triggerCount:0,status:"Active",closed:!1,outcome:null}}function C(e,t=null){if(document.getElementById("pm-alert-box")){console.log("Nevua: Alert box already exists, skipping injection");return}let n=t||{eventTitle:"",markets:[]},r=document.createElement("div");r.id="pm-alert-box",r.style.cssText=`
+(() => {
+  // content.js
+  async function waitForTradeBox() {
+    if (alertBoxInjected || document.getElementById("pm-alert-box")) {
+      return;
+    }
+    const container = document.querySelector("#trade-widget");
+    if (container) {
+      const slug = getSlugFromUrl();
+      if (slug) {
+        const marketData = await fetchMarketDataWithCache(slug);
+        injectAlertBox(container, marketData);
+      } else {
+        injectAlertBox(container, null);
+      }
+      alertBoxInjected = true;
+      return;
+    }
+    setTimeout(() => {
+      if (!alertBoxInjected && !document.getElementById("pm-alert-box")) {
+        waitForTradeBox();
+      }
+    }, 500);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+      alertBoxInjected = false;
+      waitForTradeBox();
+      startPolling();
+    });
+  } else {
+    alertBoxInjected = false;
+    waitForTradeBox();
+    startPolling();
+  }
+  var pollingInterval = null;
+  function startPolling() {
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+    }
+    pollingInterval = setInterval(() => {
+      if (!alertBoxInjected && !document.getElementById("pm-alert-box")) {
+        waitForTradeBox();
+      }
+    }, 1e3);
+  }
+  window.addEventListener("popstate", () => {
+    alertBoxInjected = false;
+    startPolling();
+  });
+  var lastUrl = location.href;
+  var lastSlug = getSlugFromUrl();
+  setInterval(() => {
+    const currentUrl = location.href;
+    const currentSlug = getSlugFromUrl();
+    if (currentUrl !== lastUrl) {
+      lastUrl = currentUrl;
+      alertBoxInjected = false;
+      if (currentSlug !== lastSlug && lastSlug) {
+        console.log(`Nevua: Slug changed from ${lastSlug} to ${currentSlug}, clearing old cache`);
+        marketDataCache.delete(lastSlug);
+      }
+      lastSlug = currentSlug;
+      startPolling();
+    }
+  }, 1e3);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && renderAlertsListCallback) {
+      setTimeout(() => {
+        renderAlertsListCallback();
+      }, 100);
+    }
+  });
+  var activeAlerts = [];
+  var renderAlertsListCallback = null;
+  var marketDataCache = /* @__PURE__ */ new Map();
+  var lastFetchTime = /* @__PURE__ */ new Map();
+  var pendingRequests = /* @__PURE__ */ new Map();
+  var RATE_LIMIT_MS = 5e3;
+  var CACHE_TTL_MS = 5 * 60 * 1e3;
+  async function ensureSubscriptions() {
+    const needed = activeAlerts.filter((alert) => alert.status === "Active" && !alert.closed).map((alert) => alert.clobtokenId);
+    chrome.runtime.sendMessage({
+      type: "update_subscriptions",
+      needed
+    }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("Nevua: Failed to update subscriptions:", chrome.runtime.lastError);
+      }
+    });
+  }
+  function saveAlertsToStorage() {
+    chrome.storage.local.set({ "polymarket_alerts": activeAlerts }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Nevua: Error saving alerts:", chrome.runtime.lastError);
+        return;
+      }
+      chrome.runtime.sendMessage({
+        type: "alert_updated",
+        alerts: activeAlerts
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Nevua: Failed to broadcast alert update:", chrome.runtime.lastError);
+        }
+      });
+    });
+  }
+  function loadAlertsFromStorage() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(["polymarket_alerts"], (result) => {
+        if (chrome.runtime.lastError) {
+          console.error("Nevua: Error loading alerts:", chrome.runtime.lastError);
+          resolve([]);
+          return;
+        }
+        const savedAlerts = result.polymarket_alerts || [];
+        savedAlerts.forEach((alert) => {
+          if (alert.status === "active") {
+            alert.status = "Active";
+          } else if (alert.status === "paused") {
+            alert.status = "Paused";
+          }
+        });
+        resolve(savedAlerts);
+      });
+    });
+  }
+  function saveExpandStateToStorage(isExpanded) {
+    chrome.storage.local.set({ "polymarket_widget_expanded": isExpanded }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Nevua: Error saving widget expand state:", chrome.runtime.lastError);
+      }
+    });
+  }
+  function loadExpandStateFromStorage() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(["polymarket_widget_expanded"], (result) => {
+        if (chrome.runtime.lastError) {
+          console.error("Nevua: Error loading widget expand state:", chrome.runtime.lastError);
+          resolve(true);
+          return;
+        }
+        const isExpanded = result.polymarket_widget_expanded !== false;
+        resolve(isExpanded);
+      });
+    });
+  }
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "price_updates") {
+      handlePriceUpdates(message.events);
+      return false;
+    }
+    if (message.type === "alert_update") {
+      activeAlerts = message.alerts;
+      if (renderAlertsListCallback) renderAlertsListCallback();
+      ensureSubscriptions();
+      return false;
+    }
+  });
+  async function handlePriceUpdates(events) {
+    if (renderAlertsListCallback) {
+      setTimeout(() => {
+        loadAlertsFromStorage().then((alerts) => {
+          activeAlerts = alerts;
+          renderAlertsListCallback();
+        });
+      }, 100);
+    }
+  }
+  function getSlugFromUrl() {
+    const match = window.location.pathname.match(/^\/event\/([^/]+)$/);
+    return match ? match[1] : null;
+  }
+  async function fetchMarketDataWithCache(slug) {
+    const now = Date.now();
+    const cacheKey = slug;
+    const cachedData = marketDataCache.get(cacheKey);
+    if (cachedData && now - cachedData.timestamp < CACHE_TTL_MS) {
+      console.log(`Nevua: Using cached market data for slug: ${slug}`);
+      return cachedData.data;
+    }
+    const pendingRequest = pendingRequests.get(cacheKey);
+    if (pendingRequest) {
+      console.log(`Nevua: Waiting for pending request for slug: ${slug}`);
+      return await pendingRequest;
+    }
+    const lastFetch = lastFetchTime.get(cacheKey) || 0;
+    if (now - lastFetch < RATE_LIMIT_MS) {
+      console.log(`Nevua: Rate limited, using cached data for slug: ${slug}`);
+      return cachedData ? cachedData.data : null;
+    }
+    console.log(`Nevua: Fetching fresh market data for slug: ${slug}`);
+    const fetchPromise = fetchMarketData(slug).then((data) => {
+      lastFetchTime.set(cacheKey, now);
+      if (data) {
+        marketDataCache.set(cacheKey, { data, timestamp: now });
+      }
+      pendingRequests.delete(cacheKey);
+      return data;
+    }).catch((error) => {
+      pendingRequests.delete(cacheKey);
+      throw error;
+    });
+    pendingRequests.set(cacheKey, fetchPromise);
+    return await fetchPromise;
+  }
+  async function fetchMarketData(slug) {
+    try {
+      const response = await fetch(`https://gamma-api.polymarket.com/events?slug=${slug}`, {
+        headers: {
+          "User-Agent": "Nevua-Markets-Chrome-Extension/1.0"
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+      const data = await response.json();
+      if (!data || !Array.isArray(data) || data.length === 0) {
+        console.error("Nevua: Invalid API response format");
+        return null;
+      }
+      const event = data[0];
+      const result = {
+        eventTitle: event.title,
+        slug: event.slug,
+        markets: []
+      };
+      if (event.markets && Array.isArray(event.markets)) {
+        event.markets.forEach((mkt) => {
+          if (mkt.active === true && mkt.closed === false) {
+            try {
+              const outcomes = JSON.parse(mkt.outcomes);
+              const clobTokenIds = JSON.parse(mkt.clobTokenIds);
+              result.markets.push({
+                conditionId: mkt.conditionId,
+                // Keep the condition ID instead of market ID
+                question: mkt.question,
+                outcomes,
+                clobTokenIds
+              });
+            } catch (e) {
+              console.error("Nevua: Error parsing market data:", e);
+            }
+          }
+        });
+      }
+      return result;
+    } catch (error) {
+      console.error("Nevua: Error fetching market data:", error);
+      return null;
+    }
+  }
+  function createAlert(eventTitle, slug, conditionId, marketQuestion, outcomeIndex, outcomeName, clobtokenId, trigger, priceAlert, targetPrice) {
+    return {
+      id: crypto.randomUUID(),
+      eventTitle,
+      slug,
+      conditionId,
+      marketQuestion,
+      outcomeIndex,
+      outcomeName,
+      clobtokenId,
+      trigger: trigger === "once" ? "One Time" : "Recurring every 30 minutes",
+      priceAlert: priceAlert.charAt(0).toUpperCase() + priceAlert.slice(1),
+      // Capitalize first letter
+      targetPrice,
+      lastTriggeredAtMS: 0,
+      triggerCount: 0,
+      status: "Active",
+      closed: false,
+      outcome: null
+    };
+  }
+  function injectAlertBox(container, marketData = null) {
+    if (document.getElementById("pm-alert-box")) {
+      console.log("Nevua: Alert box already exists, skipping injection");
+      return;
+    }
+    const data = marketData || { eventTitle: "", markets: [] };
+    const box = document.createElement("div");
+    box.id = "pm-alert-box";
+    box.style.cssText = `
     margin-top: 12px;
     padding: 16px;
     background: #ffffff;
@@ -11,7 +292,9 @@ var process = { env: { LOG_LEVEL: "error" } };
     overflow: hidden;
     display: flex;
     flex-direction: column;
-  `;let o=/^\/event\/[^/]+$/.test(window.location.pathname);r.innerHTML=`
+  `;
+    const isEventPage = /^\/event\/[^/]+$/.test(window.location.pathname);
+    box.innerHTML = `
     <div style="display: flex; flex-direction: column; gap: 16px; height: 100%;">
       <!-- Tab Header -->
       <div style="display: flex; align-items: center; gap: 0; border-bottom: 1px solid #e5e7eb; flex-shrink: 0;">
@@ -56,7 +339,20 @@ var process = { env: { LOG_LEVEL: "error" } };
       
       <!-- Create Alert Tab Content -->
       <div id="pm-create-tab-content" style="display: block; flex: 1; overflow-y: auto;">
-        ${o?`
+        ${!isEventPage ? `
+          <div style="
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding: 20px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 14px;
+          ">
+            Alerts are currently not supported for this page.
+          </div>
+        ` : `
           <div style="display: flex; flex-direction: column; gap: 16px;">
             <!-- Market Row -->
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -161,19 +457,6 @@ var process = { env: { LOG_LEVEL: "error" } };
               </div>
             </div>
           </div>
-        `:`
-          <div style="
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            padding: 20px;
-            text-align: center;
-            color: #6b7280;
-            font-size: 14px;
-          ">
-            Alerts are currently not supported for this page.
-          </div>
         `}
 
         <!-- Bottom Row: Branding and Create Button -->
@@ -191,7 +474,7 @@ var process = { env: { LOG_LEVEL: "error" } };
             ">Terms Of Use</a>
           </div>
           
-          ${o?`
+          ${isEventPage ? `
             <button id="pm-alert-set" disabled style="
               background: #9ca3af;
               color: white;
@@ -206,7 +489,7 @@ var process = { env: { LOG_LEVEL: "error" } };
             ">
               Create Alert
             </button>
-          `:""}
+          ` : ""}
         </div>
       </div>
       
@@ -235,7 +518,223 @@ var process = { env: { LOG_LEVEL: "error" } };
         </div>
       </div>
     </div>
-  `,e.appendChild(r),o&&F(r,n),H(r),m=f,L().then(i=>{a=i,f(),g();let s=a.filter(l=>l.status==="Active"&&!l.closed).length;chrome.runtime.sendMessage({type:"update_badge",count:s},l=>{chrome.runtime.lastError&&console.error("Nevua: Failed to update badge:",chrome.runtime.lastError)})})}function F(e,t){let n=e.querySelector("#pm-market-select"),r=e.querySelector("#pm-outcome-select"),o=e.querySelector("#pm-alert-set");t.markets&&t.markets.length>0?(n.innerHTML='<option value="" disabled selected>Select a market</option>',t.markets.forEach((i,s)=>{let l=document.createElement("option");l.value=s.toString(),l.textContent=i.question,l.title=i.question,n.appendChild(l)}),n.disabled=!1):(n.innerHTML='<option value="" disabled selected>No markets available</option>',n.disabled=!0),n.addEventListener("change",function(){if(this.value!==""&&t.markets){let i=parseInt(this.value),s=t.markets[i];s&&s.outcomes&&(r.disabled=!1,r.innerHTML="",s.outcomes.forEach((c,d)=>{let p=document.createElement("option");p.value=d.toString(),p.textContent=c,r.appendChild(p)}),s.outcomes.length>0&&(r.value="0"));let l=this.options[this.selectedIndex],u=l.title||l.textContent;u.length>50&&(l.textContent=u.substring(0,47)+"...")}else r.innerHTML='<option value="" disabled selected>None</option>',r.disabled=!0;v()}),r.addEventListener("change",v),e.querySelector("#pm-alert-price").addEventListener("input",function(){let i=this.value.replace(/[^0-9.]/g,""),s=i.split(".");s.length>2&&(i=s[0]+"."+s.slice(1).join(""));let l=parseFloat(i);!isNaN(l)&&l>100&&(i="100"),this.value=i,v()}),o.onclick=()=>{if(o.disabled)return;let i=parseInt(n.value),s=parseInt(r.value),l=t.markets[i],u=e.querySelector("#pm-alert-frequency").value,c=e.querySelector("#pm-alert-type").value,d=parseFloat(e.querySelector("#pm-alert-price").value);if(!isNaN(d)&&d>=0&&l){let p=j(t.eventTitle,t.slug,l.conditionId,l.question,s,l.outcomes[s],l.clobTokenIds[s],u,c,d);a.push(p),w(),f(),g(),n.selectedIndex=0,r.disabled=!0,r.innerHTML='<option value="" disabled selected>None</option>',e.querySelector("#pm-alert-price").value="",v()}}}function H(e){let t=e.querySelector("#pm-tab-create"),n=e.querySelector("#pm-tab-alerts"),r=e.querySelector("#pm-create-tab-content"),o=e.querySelector("#pm-alerts-tab-content"),i=e.querySelector("#pm-tab-chevron"),s=e.querySelector("#pm-chevron-icon"),l=!0;function u(){l?s.innerHTML='<path d="M16.293 9.293L12 13.586 7.707 9.293 6.293 10.707 12 16.414 17.707 10.707z"></path>':s.innerHTML='<path d="M7.707 14.707L12 10.414 16.293 14.707 17.707 13.293 12 7.586 6.293 13.293z"></path>'}function c(p){l=p,u(),l?(r.style.display=t.classList.contains("pm-tab-active")?"block":"none",o.style.display=n.classList.contains("pm-tab-active")?"block":"none"):(r.style.display="none",o.style.display="none"),q(l)}function d(p,b=!1){!l&&b&&c(!0),p==="create"?(t.classList.add("pm-tab-active"),n.classList.remove("pm-tab-active"),t.style.borderBottomColor="#3b82f6",t.style.color="#111827",t.style.fontWeight="600",n.style.borderBottomColor="transparent",n.style.color="#6b7280",n.style.fontWeight="500",l&&(r.style.display="block",o.style.display="none")):(n.classList.add("pm-tab-active"),t.classList.remove("pm-tab-active"),n.style.borderBottomColor="#3b82f6",n.style.color="#111827",n.style.fontWeight="600",t.style.borderBottomColor="transparent",t.style.color="#6b7280",t.style.fontWeight="500",l&&(o.style.display="block",r.style.display="none"),f())}t.addEventListener("click",()=>d("create",!0)),n.addEventListener("click",()=>d("alerts",!0)),i.addEventListener("click",()=>{c(!l)}),$().then(p=>{c(p)})}function v(){let e=document.getElementById("pm-alert-box");if(!e)return;let t=e.querySelector("#pm-market-select").value,n=e.querySelector("#pm-outcome-select").value,r=e.querySelector("#pm-alert-price").value,o=e.querySelector("#pm-alert-set"),i=t&&t!==""&&n&&n!==""&&r&&!isNaN(parseFloat(r));o.disabled=!i,i?(o.style.backgroundColor="#3b82f6",o.style.cursor="pointer",o.onmouseover=()=>o.style.backgroundColor="#2563eb",o.onmouseout=()=>o.style.backgroundColor="#3b82f6"):(o.style.backgroundColor="#9ca3af",o.style.cursor="not-allowed",o.onmouseover=null,o.onmouseout=null)}function f(){let e=document.getElementById("pm-alerts-list"),t=document.getElementById("pm-no-alerts"),n=document.getElementById("pm-alerts-summary");if(!e||!t)return;if(n){let o=a.filter(s=>s.status==="Active"&&!s.closed).length;if(a.length>0){n.innerHTML=`
+  `;
+    container.appendChild(box);
+    if (isEventPage) {
+      setupFormHandlers(box, data);
+    }
+    setupTabHandlers(box);
+    renderAlertsListCallback = renderAlertsList;
+    loadAlertsFromStorage().then((savedAlerts) => {
+      activeAlerts = savedAlerts;
+      renderAlertsList();
+      ensureSubscriptions();
+      const activeCount = activeAlerts.filter((a) => a.status === "Active" && !a.closed).length;
+      chrome.runtime.sendMessage({
+        type: "update_badge",
+        count: activeCount
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Nevua: Failed to update badge:", chrome.runtime.lastError);
+        }
+      });
+    });
+  }
+  function setupFormHandlers(box, marketData) {
+    const marketSelect = box.querySelector("#pm-market-select");
+    const outcomeSelect = box.querySelector("#pm-outcome-select");
+    const createButton = box.querySelector("#pm-alert-set");
+    if (marketData.markets && marketData.markets.length > 0) {
+      marketSelect.innerHTML = '<option value="" disabled selected>Select a market</option>';
+      marketData.markets.forEach((market, index) => {
+        const option = document.createElement("option");
+        option.value = index.toString();
+        option.textContent = market.question;
+        option.title = market.question;
+        marketSelect.appendChild(option);
+      });
+      marketSelect.disabled = false;
+    } else {
+      marketSelect.innerHTML = '<option value="" disabled selected>No markets available</option>';
+      marketSelect.disabled = true;
+    }
+    marketSelect.addEventListener("change", function() {
+      if (this.value !== "" && marketData.markets) {
+        const marketIndex = parseInt(this.value);
+        const selectedMarket = marketData.markets[marketIndex];
+        if (selectedMarket && selectedMarket.outcomes) {
+          outcomeSelect.disabled = false;
+          outcomeSelect.innerHTML = "";
+          selectedMarket.outcomes.forEach((outcome, index) => {
+            const option = document.createElement("option");
+            option.value = index.toString();
+            option.textContent = outcome;
+            outcomeSelect.appendChild(option);
+          });
+          if (selectedMarket.outcomes.length > 0) {
+            outcomeSelect.value = "0";
+          }
+        }
+        const selectedOption = this.options[this.selectedIndex];
+        const fullText = selectedOption.title || selectedOption.textContent;
+        if (fullText.length > 50) {
+          selectedOption.textContent = fullText.substring(0, 47) + "...";
+        }
+      } else {
+        outcomeSelect.innerHTML = '<option value="" disabled selected>None</option>';
+        outcomeSelect.disabled = true;
+      }
+      updateButtonState();
+    });
+    outcomeSelect.addEventListener("change", updateButtonState);
+    box.querySelector("#pm-alert-price").addEventListener("input", function() {
+      let value = this.value.replace(/[^0-9.]/g, "");
+      const parts = value.split(".");
+      if (parts.length > 2) {
+        value = parts[0] + "." + parts.slice(1).join("");
+      }
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue) && numValue > 100) {
+        value = "100";
+      }
+      this.value = value;
+      updateButtonState();
+    });
+    createButton.onclick = () => {
+      if (createButton.disabled) return;
+      const marketIndex = parseInt(marketSelect.value);
+      const outcomeIndex = parseInt(outcomeSelect.value);
+      const selectedMarket = marketData.markets[marketIndex];
+      const frequency = box.querySelector("#pm-alert-frequency").value;
+      const type = box.querySelector("#pm-alert-type").value;
+      const target = parseFloat(box.querySelector("#pm-alert-price").value);
+      if (!isNaN(target) && target >= 0 && selectedMarket) {
+        const newAlert = createAlert(
+          marketData.eventTitle,
+          marketData.slug,
+          selectedMarket.conditionId,
+          selectedMarket.question,
+          outcomeIndex,
+          selectedMarket.outcomes[outcomeIndex],
+          selectedMarket.clobTokenIds[outcomeIndex],
+          frequency,
+          type,
+          target
+        );
+        activeAlerts.push(newAlert);
+        saveAlertsToStorage();
+        renderAlertsList();
+        ensureSubscriptions();
+        marketSelect.selectedIndex = 0;
+        outcomeSelect.disabled = true;
+        outcomeSelect.innerHTML = '<option value="" disabled selected>None</option>';
+        box.querySelector("#pm-alert-price").value = "";
+        updateButtonState();
+      }
+    };
+  }
+  function setupTabHandlers(box) {
+    const createTabButton = box.querySelector("#pm-tab-create");
+    const alertsTabButton = box.querySelector("#pm-tab-alerts");
+    const createTabContent = box.querySelector("#pm-create-tab-content");
+    const alertsTabContent = box.querySelector("#pm-alerts-tab-content");
+    const chevronButton = box.querySelector("#pm-tab-chevron");
+    const chevronIcon = box.querySelector("#pm-chevron-icon");
+    let isExpanded = true;
+    function updateChevronIcon() {
+      if (isExpanded) {
+        chevronIcon.innerHTML = '<path d="M16.293 9.293L12 13.586 7.707 9.293 6.293 10.707 12 16.414 17.707 10.707z"></path>';
+      } else {
+        chevronIcon.innerHTML = '<path d="M7.707 14.707L12 10.414 16.293 14.707 17.707 13.293 12 7.586 6.293 13.293z"></path>';
+      }
+    }
+    function setExpandState(expanded) {
+      isExpanded = expanded;
+      updateChevronIcon();
+      if (isExpanded) {
+        createTabContent.style.display = createTabButton.classList.contains("pm-tab-active") ? "block" : "none";
+        alertsTabContent.style.display = alertsTabButton.classList.contains("pm-tab-active") ? "block" : "none";
+      } else {
+        createTabContent.style.display = "none";
+        alertsTabContent.style.display = "none";
+      }
+      saveExpandStateToStorage(isExpanded);
+    }
+    function switchTab(tabName, forceExpand = false) {
+      if (!isExpanded && forceExpand) {
+        setExpandState(true);
+      }
+      if (tabName === "create") {
+        createTabButton.classList.add("pm-tab-active");
+        alertsTabButton.classList.remove("pm-tab-active");
+        createTabButton.style.borderBottomColor = "#3b82f6";
+        createTabButton.style.color = "#111827";
+        createTabButton.style.fontWeight = "600";
+        alertsTabButton.style.borderBottomColor = "transparent";
+        alertsTabButton.style.color = "#6b7280";
+        alertsTabButton.style.fontWeight = "500";
+        if (isExpanded) {
+          createTabContent.style.display = "block";
+          alertsTabContent.style.display = "none";
+        }
+      } else {
+        alertsTabButton.classList.add("pm-tab-active");
+        createTabButton.classList.remove("pm-tab-active");
+        alertsTabButton.style.borderBottomColor = "#3b82f6";
+        alertsTabButton.style.color = "#111827";
+        alertsTabButton.style.fontWeight = "600";
+        createTabButton.style.borderBottomColor = "transparent";
+        createTabButton.style.color = "#6b7280";
+        createTabButton.style.fontWeight = "500";
+        if (isExpanded) {
+          alertsTabContent.style.display = "block";
+          createTabContent.style.display = "none";
+        }
+        renderAlertsList();
+      }
+    }
+    createTabButton.addEventListener("click", () => switchTab("create", true));
+    alertsTabButton.addEventListener("click", () => switchTab("alerts", true));
+    chevronButton.addEventListener("click", () => {
+      setExpandState(!isExpanded);
+    });
+    loadExpandStateFromStorage().then((savedExpanded) => {
+      setExpandState(savedExpanded);
+    });
+  }
+  function updateButtonState() {
+    const box = document.getElementById("pm-alert-box");
+    if (!box) return;
+    const market = box.querySelector("#pm-market-select").value;
+    const outcome = box.querySelector("#pm-outcome-select").value;
+    const price = box.querySelector("#pm-alert-price").value;
+    const createButton = box.querySelector("#pm-alert-set");
+    const isValid = market && market !== "" && outcome && outcome !== "" && price && !isNaN(parseFloat(price));
+    createButton.disabled = !isValid;
+    if (isValid) {
+      createButton.style.backgroundColor = "#3b82f6";
+      createButton.style.cursor = "pointer";
+      createButton.onmouseover = () => createButton.style.backgroundColor = "#2563eb";
+      createButton.onmouseout = () => createButton.style.backgroundColor = "#3b82f6";
+    } else {
+      createButton.style.backgroundColor = "#9ca3af";
+      createButton.style.cursor = "not-allowed";
+      createButton.onmouseover = null;
+      createButton.onmouseout = null;
+    }
+  }
+  function renderAlertsList() {
+    const alertsList = document.getElementById("pm-alerts-list");
+    const noAlertsMsg = document.getElementById("pm-no-alerts");
+    const summaryElement = document.getElementById("pm-alerts-summary");
+    if (!alertsList || !noAlertsMsg) {
+      return;
+    }
+    if (summaryElement) {
+      const activeAlertsCount = activeAlerts.filter((a) => a.status === "Active" && !a.closed).length;
+      const shouldShowBulkActions = activeAlerts.length > 0;
+      if (shouldShowBulkActions) {
+        summaryElement.innerHTML = `
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <button id="pm-bulk-clear-btn" style="
@@ -264,10 +763,71 @@ var process = { env: { LOG_LEVEL: "error" } };
             </select>
           </div>
           <div style="color: #6b7280; font-size: 12px;">
-            Active: ${o}
+            Active: ${activeAlertsCount}
           </div>
         </div>
-      `;let s=document.getElementById("pm-bulk-clear-btn"),l=document.getElementById("pm-bulk-clear-select");l.addEventListener("change",function(){this.value===""?(s.disabled=!0,s.style.background="#9ca3af",s.style.cursor="not-allowed"):(s.disabled=!1,s.style.background="#dc2626",s.style.cursor="pointer",s.onmouseover=()=>s.style.background="#b91c1c",s.onmouseout=()=>s.style.background="#dc2626")}),s.addEventListener("click",function(){if(this.disabled)return;let u=l.value,c=[];switch(u){case"closed":c=a.filter(d=>d.closed);break;case"paused":c=a.filter(d=>d.status==="Paused");break;case"all":c=[...a];break}c.length>0&&(c.forEach(d=>{let p=a.findIndex(b=>b.id===d.id);p!==-1&&a.splice(p,1)}),w(),f(),g()),l.value="",s.disabled=!0,s.style.background="#9ca3af",s.style.cursor="not-allowed"})}else n.textContent=`Active: ${o}`}let r=e.scrollTop;a.length===0?(t.style.display="block",e.querySelectorAll(".pm-alert-item").forEach(o=>o.remove())):(t.style.display="none",e.querySelectorAll(".pm-alert-item").forEach(o=>o.remove()),a.forEach(o=>{let i=document.createElement("div");i.className="pm-alert-item",i.style.cssText=`
+      `;
+        const bulkClearBtn = document.getElementById("pm-bulk-clear-btn");
+        const bulkClearSelect = document.getElementById("pm-bulk-clear-select");
+        bulkClearSelect.addEventListener("change", function() {
+          if (this.value === "") {
+            bulkClearBtn.disabled = true;
+            bulkClearBtn.style.background = "#9ca3af";
+            bulkClearBtn.style.cursor = "not-allowed";
+          } else {
+            bulkClearBtn.disabled = false;
+            bulkClearBtn.style.background = "#dc2626";
+            bulkClearBtn.style.cursor = "pointer";
+            bulkClearBtn.onmouseover = () => bulkClearBtn.style.background = "#b91c1c";
+            bulkClearBtn.onmouseout = () => bulkClearBtn.style.background = "#dc2626";
+          }
+        });
+        bulkClearBtn.addEventListener("click", function() {
+          if (this.disabled) return;
+          const clearType = bulkClearSelect.value;
+          let alertsToDelete = [];
+          switch (clearType) {
+            case "closed":
+              alertsToDelete = activeAlerts.filter((a) => a.closed);
+              break;
+            case "paused":
+              alertsToDelete = activeAlerts.filter((a) => a.status === "Paused");
+              break;
+            case "all":
+              alertsToDelete = [...activeAlerts];
+              break;
+          }
+          if (alertsToDelete.length > 0) {
+            alertsToDelete.forEach((alertToDelete) => {
+              const index = activeAlerts.findIndex((a) => a.id === alertToDelete.id);
+              if (index !== -1) {
+                activeAlerts.splice(index, 1);
+              }
+            });
+            saveAlertsToStorage();
+            renderAlertsList();
+            ensureSubscriptions();
+          }
+          bulkClearSelect.value = "";
+          bulkClearBtn.disabled = true;
+          bulkClearBtn.style.background = "#9ca3af";
+          bulkClearBtn.style.cursor = "not-allowed";
+        });
+      } else {
+        summaryElement.textContent = `Active: ${activeAlertsCount}`;
+      }
+    }
+    const currentScrollTop = alertsList.scrollTop;
+    if (activeAlerts.length === 0) {
+      noAlertsMsg.style.display = "block";
+      alertsList.querySelectorAll(".pm-alert-item").forEach((item) => item.remove());
+    } else {
+      noAlertsMsg.style.display = "none";
+      alertsList.querySelectorAll(".pm-alert-item").forEach((item) => item.remove());
+      activeAlerts.forEach((alert) => {
+        const alertItem = document.createElement("div");
+        alertItem.className = "pm-alert-item";
+        alertItem.style.cssText = `
         display: flex;
         align-items: flex-start;
         gap: 8px;
@@ -276,23 +836,32 @@ var process = { env: { LOG_LEVEL: "error" } };
         border: 1px solid #e5e7eb;
         border-radius: 6px;
         font-size: 12px;
-      `;let s=o.status==="Active"?"#10b981":"#6b7280",l=o.marketQuestion.length>30?o.marketQuestion.substring(0,27)+"...":o.marketQuestion,u=o.lastTriggeredAtMS>0?new Date(o.lastTriggeredAtMS).toLocaleString():"Never",c=o.eventTitle!==o.marketQuestion?`<div style="color: #6b7280; font-size: 11px; margin-bottom: 2px;" title="${o.eventTitle}">Event: ${o.eventTitle.length>30?o.eventTitle.substring(0,27)+"...":o.eventTitle}</div>`:"",d=o.closed,p=d?"disabled":"",b=d?"opacity: 0.5; cursor: not-allowed;":"cursor: pointer;",B=d?"Market is closed":o.status==="Active"?"Pause this alert":"Resume this alert";i.innerHTML=`
+      `;
+        const statusDot = alert.status === "Active" ? "#10b981" : "#6b7280";
+        const truncatedTitle = alert.marketQuestion.length > 30 ? alert.marketQuestion.substring(0, 27) + "..." : alert.marketQuestion;
+        const lastTriggeredDate = alert.lastTriggeredAtMS > 0 ? new Date(alert.lastTriggeredAtMS).toLocaleString() : "Never";
+        const eventLine = alert.eventTitle !== alert.marketQuestion ? `<div style="color: #6b7280; font-size: 11px; margin-bottom: 2px;" title="${alert.eventTitle}">Event: ${alert.eventTitle.length > 30 ? alert.eventTitle.substring(0, 27) + "..." : alert.eventTitle}</div>` : "";
+        const isMarketClosed = alert.closed;
+        const toggleButtonDisabled = isMarketClosed ? "disabled" : "";
+        const toggleButtonStyle = isMarketClosed ? "opacity: 0.5; cursor: not-allowed;" : "cursor: pointer;";
+        const toggleButtonTitle = isMarketClosed ? "Market is closed" : alert.status === "Active" ? "Pause this alert" : "Resume this alert";
+        alertItem.innerHTML = `
         <div style="
           width: 8px;
           height: 8px;
           border-radius: 50%;
-          background: ${s};
+          background: ${statusDot};
           flex-shrink: 0;
           margin-top: 4px;
         "></div>
         <div style="flex: 1; overflow: hidden; line-height: 1.4;">
           <!-- Title row with buttons -->
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <div style="font-weight: 500; color: #374151; flex: 1; overflow: hidden;" title="${o.marketQuestion}">
-              <a href="https://polymarket.com/event/${o.slug}" target="_blank" style="color: #3b82f6; text-decoration: none;">${l}</a>
+            <div style="font-weight: 500; color: #374151; flex: 1; overflow: hidden;" title="${alert.marketQuestion}">
+              <a href="https://polymarket.com/event/${alert.slug}" target="_blank" style="color: #3b82f6; text-decoration: none;">${truncatedTitle}</a>
             </div>
             <div style="display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px;">
-              <button class="pm-toggle-alert" data-id="${o.id}" ${p} style="
+              <button class="pm-toggle-alert" data-id="${alert.id}" ${toggleButtonDisabled} style="
                 background: transparent;
                 color: #374151;
                 border: 1px solid #d1d5db;
@@ -301,9 +870,9 @@ var process = { env: { LOG_LEVEL: "error" } };
                 font-size: 12px;
                 flex-shrink: 0;
                 min-width: 28px;
-                ${b}
-              " title="${B}">${o.status==="Active"?"\u23F8\uFE0F":"\u25B6\uFE0F"}</button>
-              <button class="pm-delete-alert" data-id="${o.id}" style="
+                ${toggleButtonStyle}
+              " title="${toggleButtonTitle}">${alert.status === "Active" ? "\u23F8\uFE0F" : "\u25B6\uFE0F"}</button>
+              <button class="pm-delete-alert" data-id="${alert.id}" style="
                 background: transparent;
                 color: #374151;
                 border: 1px solid #d1d5db;
@@ -318,29 +887,84 @@ var process = { env: { LOG_LEVEL: "error" } };
           </div>
           
           <!-- Event line (if different) -->
-          ${c}
+          ${eventLine}
           
-          ${d?`
+          ${isMarketClosed ? `
             <!-- Market closed status -->
             <div style="color: #dc2626; font-size: 11px; margin-bottom: 2px; font-weight: 600;" title="This market has been resolved">
-              Market closed: Outcome > ${o.outcome}
+              Market closed: Outcome > ${alert.outcome}
             </div>
-          `:`
+          ` : `
             <!-- Outcome and Price row -->
             <div style="color: #6b7280; font-size: 11px; margin-bottom: 2px;" title="The outcome you're betting on and price threshold">
-              <span>Outcome: ${o.outcomeName}</span>
-              <span style="margin-left: 8px;">Price ${o.priceAlert.toLowerCase()} ${o.targetPrice}\xA2</span>
+              <span>Outcome: ${alert.outcomeName}</span>
+              <span style="margin-left: 8px;">Price ${alert.priceAlert.toLowerCase()} ${alert.targetPrice}\xA2</span>
             </div>
             
             <!-- Trigger row -->
             <div style="color: #6b7280; font-size: 11px; margin-bottom: 2px;" title="How often this alert will trigger">
-              <span>Trigger: ${o.trigger}</span>
+              <span>Trigger: ${alert.trigger}</span>
             </div>
           `}
           
           <!-- Last triggered row -->
           <div style="color: #6b7280; font-size: 11px;" title="When this alert was last triggered">
-            <span>Last triggered: ${u} (${o.triggerCount} times)</span>
+            <span>Last triggered: ${lastTriggeredDate} (${alert.triggerCount} times)</span>
           </div>
         </div>
-      `,e.appendChild(i)}),e.querySelectorAll(".pm-toggle-alert").forEach(o=>{o.addEventListener("click",function(){let i=this.dataset.id;R(i)})}),e.querySelectorAll(".pm-delete-alert").forEach(o=>{o.addEventListener("click",function(){let i=this.dataset.id;O(i)})}),setTimeout(()=>{e.scrollTop=r},0)),U()}function R(e){let t=a.find(n=>n.id===e);t&&!t.closed&&(t.status=t.status==="Active"?"Paused":"Active",w(),f(),g())}function O(e){let t=a.findIndex(n=>n.id===e);t!==-1&&(a.splice(t,1),w(),f(),g())}function U(){let e=document.getElementById("pm-alert-count");if(!e)return;let t=parseInt(e.textContent)||0,n=a.filter(r=>r.status==="Active"&&!r.closed).length;e.textContent=n,t!==n&&(e.style.fontWeight="bold",e.style.color="#3b82f6",setTimeout(()=>{e.style.fontWeight="",e.style.color=""},1e3))}})();
+      `;
+        alertsList.appendChild(alertItem);
+      });
+      alertsList.querySelectorAll(".pm-toggle-alert").forEach((button) => {
+        button.addEventListener("click", function() {
+          const alertId = this.dataset.id;
+          toggleAlert(alertId);
+        });
+      });
+      alertsList.querySelectorAll(".pm-delete-alert").forEach((button) => {
+        button.addEventListener("click", function() {
+          const alertId = this.dataset.id;
+          deleteAlert(alertId);
+        });
+      });
+      setTimeout(() => {
+        alertsList.scrollTop = currentScrollTop;
+      }, 0);
+    }
+    updateAlertCount();
+  }
+  function toggleAlert(alertId) {
+    const alert = activeAlerts.find((a) => a.id === alertId);
+    if (alert && !alert.closed) {
+      alert.status = alert.status === "Active" ? "Paused" : "Active";
+      saveAlertsToStorage();
+      renderAlertsList();
+      ensureSubscriptions();
+    }
+  }
+  function deleteAlert(alertId) {
+    const alertIndex = activeAlerts.findIndex((a) => a.id === alertId);
+    if (alertIndex !== -1) {
+      activeAlerts.splice(alertIndex, 1);
+      saveAlertsToStorage();
+      renderAlertsList();
+      ensureSubscriptions();
+    }
+  }
+  function updateAlertCount() {
+    const countElement = document.getElementById("pm-alert-count");
+    if (!countElement) return;
+    const oldCount = parseInt(countElement.textContent) || 0;
+    const newCount = activeAlerts.filter((a) => a.status === "Active" && !a.closed).length;
+    countElement.textContent = newCount;
+    if (oldCount !== newCount) {
+      countElement.style.fontWeight = "bold";
+      countElement.style.color = "#3b82f6";
+      setTimeout(() => {
+        countElement.style.fontWeight = "";
+        countElement.style.color = "";
+      }, 1e3);
+    }
+  }
+})();
+//# sourceMappingURL=content.js.map
