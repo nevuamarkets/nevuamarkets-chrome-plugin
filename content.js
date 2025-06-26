@@ -15,9 +15,12 @@ async function waitForTradeBox() {
     if (slug) {
       const marketData = await fetchMarketDataWithCache(slug);
       injectAlertBox(container, marketData);
-    } else {
-      injectAlertBox(container, null);
+      alertBoxInjected = true;
+      return;
     }
+
+    // For other pages, inject immediately even without a slug (no markets)
+    injectAlertBox(container, null);
     alertBoxInjected = true;
     return;
   }
@@ -76,14 +79,29 @@ setInterval(() => {
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
     alertBoxInjected = false;
+    // Remove existing alert box so it can be re-injected with new data
+    const existingBox = document.getElementById("pm-alert-box");
+    if (existingBox) existingBox.remove();
     
     // Only clear cache if slug actually changed (not just URL params)
     if (currentSlug !== lastSlug && lastSlug) {
-      console.log(`Nevua: Slug changed from ${lastSlug} to ${currentSlug}, clearing old cache`);
+      //console.log(`Nevua: Slug changed (accordion) from ${lastSlug} to ${currentSlug}, refreshing widget`);
       marketDataCache.delete(lastSlug);
     }
     lastSlug = currentSlug;
     
+    startPolling();
+  } else if (currentSlug !== lastSlug) {
+    // Slug changed without a URL change (e.g., on /sports page)
+    //console.log(`Nevua: Slug changed (accordion) from ${lastSlug} to ${currentSlug}, refreshing widget`);
+    alertBoxInjected = false;
+    // Remove existing alert box so it can be re-injected with new data
+    const existingBox2 = document.getElementById("pm-alert-box");
+    if (existingBox2) existingBox2.remove();
+    if (lastSlug) {
+      marketDataCache.delete(lastSlug);
+    }
+    lastSlug = currentSlug;
     startPolling();
   }
 }, 1000);
@@ -249,8 +267,47 @@ async function handlePriceUpdates(events) {
  * @returns {string|null} - The slug from the URL or null if not found
  */
 function getSlugFromUrl() {
-  const match = window.location.pathname.match(/^\/event\/([^/]+)$/);
-  return match ? match[1] : null;
+  // Handle classic /event/<slug> pages first
+  const eventMatch = window.location.pathname.match(/^\/event\/([^/]+)$/);
+  if (eventMatch) {
+    return eventMatch[1];
+  }
+
+  // Handle /sports pages which embed the slug in accordion item IDs
+  if (window.location.pathname.startsWith('/sports')) {
+    // Collect all accordion items containing a sports market
+    const accordionItems = Array.from(document.querySelectorAll('div[id^="sports-accordion-item-"]'));
+    if (accordionItems.length === 0) {
+      //console.log('Nevua: No accordion items found');
+      return null; // Nothing yet – probably still loading
+    }
+
+    let target = null;
+    if (accordionItems.length === 1) {
+      // Single match – use it regardless of state
+      //console.log('Nevua: Single accordion item found');
+      target = accordionItems[0];
+    } else {
+      // Multiple matches – prefer the one that is currently open
+      //console.log('Nevua: Multiple accordion items found');
+      target = accordionItems.find(el => el.getAttribute('data-state') === 'open') || accordionItems[0];
+      if (target && target.getAttribute('data-state') !== 'open') {
+        //console.log('Nevua: No open accordion items found, defaulting to first item');
+      }
+    }
+
+    const id = target.id || '';
+    const prefix = 'sports-accordion-item-';
+    if (id.startsWith(prefix)) {
+      let slugValue = id.slice(prefix.length);
+      if (slugValue.endsWith('-moneyline')) {
+        slugValue = slugValue.replace(/-moneyline$/, '');
+      }
+      return slugValue;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -265,26 +322,26 @@ async function fetchMarketDataWithCache(slug) {
   // Check if we have cached data that's still valid
   const cachedData = marketDataCache.get(cacheKey);
   if (cachedData && (now - cachedData.timestamp) < CACHE_TTL_MS) {
-    console.log(`Nevua: Using cached market data for slug: ${slug}`);
+    //console.log(`Nevua: Using cached market data for slug: ${slug}`);
     return cachedData.data;
   }
   
   // Check if there's already a pending request for this slug
   const pendingRequest = pendingRequests.get(cacheKey);
   if (pendingRequest) {
-    console.log(`Nevua: Waiting for pending request for slug: ${slug}`);
+    //`Nevua: Waiting for pending request for slug: ${slug}`);
     return await pendingRequest;
   }
   
   // Check rate limiting
   const lastFetch = lastFetchTime.get(cacheKey) || 0;
   if ((now - lastFetch) < RATE_LIMIT_MS) {
-    console.log(`Nevua: Rate limited, using cached data for slug: ${slug}`);
+    //console.log(`Nevua: Rate limited, using cached data for slug: ${slug}`);
     return cachedData ? cachedData.data : null;
   }
   
   // Create and track the fetch promise
-  console.log(`Nevua: Fetching fresh market data for slug: ${slug}`);
+  //console.log(`Nevua: Fetching fresh market data for slug: ${slug}`);
   const fetchPromise = fetchMarketData(slug).then(data => {
     // Update cache and rate limit tracking
     lastFetchTime.set(cacheKey, now);
@@ -430,7 +487,7 @@ function createAlert(eventTitle, slug, conditionId, marketQuestion, outcomeIndex
 function injectAlertBox(container, marketData = null) {
   // Check if alert box already exists - don't inject if it does
   if (document.getElementById("pm-alert-box")) {
-    console.log('Nevua: Alert box already exists, skipping injection');
+    //console.log('Nevua: Alert box already exists, skipping injection');
     return;
   }
   
@@ -453,8 +510,8 @@ function injectAlertBox(container, marketData = null) {
     flex-direction: column;
   `;
 
-  // Only allow alert creation for /event/<slug> URLs
-  const isEventPage = /^\/event\/[^/]+$/.test(window.location.pathname);
+  // Allow alert creation on /event/<slug> and /sports pages
+  const isEventPage = /^\/event\/[^/]+$/.test(window.location.pathname) || window.location.pathname.startsWith('/sports');
   
   box.innerHTML = `
     <div style="display: flex; flex-direction: column; gap: 16px; height: 100%;">

@@ -1,4 +1,4 @@
-var process = { env: { LOG_LEVEL: "error" } };
+var process = { env: { LOG_LEVEL: "warn" } };
 (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -10326,7 +10326,7 @@ return {}
       exports2.logger = void 0;
       var winston_1 = __importDefault2((init_winston(), __toCommonJS(winston_exports)));
       exports2.logger = winston_1.default.createLogger({
-        level: "error",
+        level: "warn",
         format: winston_1.default.format.combine(winston_1.default.format.timestamp(), winston_1.default.format.errors({ stack: true }), winston_1.default.format.colorize(), winston_1.default.format.printf(({ level, message, timestamp, ...rest }) => {
           const restString = Object.keys(rest).filter((key) => key !== "service").sort().map((key) => `${key}: ${JSON.stringify(rest[key])}`).join(", ");
           return `${timestamp} ${level}: ${message}${restString ? ` (${restString})` : ""}`;

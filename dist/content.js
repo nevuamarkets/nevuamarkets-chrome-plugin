@@ -1,4 +1,4 @@
-var process = { env: { LOG_LEVEL: "error" } };
+var process = { env: { LOG_LEVEL: "warn" } };
 (() => {
   // content.js
   async function waitForTradeBox() {
@@ -11,9 +11,10 @@ var process = { env: { LOG_LEVEL: "error" } };
       if (slug) {
         const marketData = await fetchMarketDataWithCache(slug);
         injectAlertBox(container, marketData);
-      } else {
-        injectAlertBox(container, null);
+        alertBoxInjected = true;
+        return;
       }
+      injectAlertBox(container, null);
       alertBoxInjected = true;
       return;
     }
@@ -57,8 +58,18 @@ var process = { env: { LOG_LEVEL: "error" } };
     if (currentUrl !== lastUrl) {
       lastUrl = currentUrl;
       alertBoxInjected = false;
+      const existingBox = document.getElementById("pm-alert-box");
+      if (existingBox) existingBox.remove();
       if (currentSlug !== lastSlug && lastSlug) {
-        console.log(`Nevua: Slug changed from ${lastSlug} to ${currentSlug}, clearing old cache`);
+        marketDataCache.delete(lastSlug);
+      }
+      lastSlug = currentSlug;
+      startPolling();
+    } else if (currentSlug !== lastSlug) {
+      alertBoxInjected = false;
+      const existingBox2 = document.getElementById("pm-alert-box");
+      if (existingBox2) existingBox2.remove();
+      if (lastSlug) {
         marketDataCache.delete(lastSlug);
       }
       lastSlug = currentSlug;
@@ -169,28 +180,50 @@ var process = { env: { LOG_LEVEL: "error" } };
     }
   }
   function getSlugFromUrl() {
-    const match = window.location.pathname.match(/^\/event\/([^/]+)$/);
-    return match ? match[1] : null;
+    const eventMatch = window.location.pathname.match(/^\/event\/([^/]+)$/);
+    if (eventMatch) {
+      return eventMatch[1];
+    }
+    if (window.location.pathname.startsWith("/sports")) {
+      const accordionItems = Array.from(document.querySelectorAll('div[id^="sports-accordion-item-"]'));
+      if (accordionItems.length === 0) {
+        return null;
+      }
+      let target = null;
+      if (accordionItems.length === 1) {
+        target = accordionItems[0];
+      } else {
+        target = accordionItems.find((el) => el.getAttribute("data-state") === "open") || accordionItems[0];
+        if (target && target.getAttribute("data-state") !== "open") {
+        }
+      }
+      const id = target.id || "";
+      const prefix = "sports-accordion-item-";
+      if (id.startsWith(prefix)) {
+        let slugValue = id.slice(prefix.length);
+        if (slugValue.endsWith("-moneyline")) {
+          slugValue = slugValue.replace(/-moneyline$/, "");
+        }
+        return slugValue;
+      }
+    }
+    return null;
   }
   async function fetchMarketDataWithCache(slug) {
     const now = Date.now();
     const cacheKey = slug;
     const cachedData = marketDataCache.get(cacheKey);
     if (cachedData && now - cachedData.timestamp < CACHE_TTL_MS) {
-      console.log(`Nevua: Using cached market data for slug: ${slug}`);
       return cachedData.data;
     }
     const pendingRequest = pendingRequests.get(cacheKey);
     if (pendingRequest) {
-      console.log(`Nevua: Waiting for pending request for slug: ${slug}`);
       return await pendingRequest;
     }
     const lastFetch = lastFetchTime.get(cacheKey) || 0;
     if (now - lastFetch < RATE_LIMIT_MS) {
-      console.log(`Nevua: Rate limited, using cached data for slug: ${slug}`);
       return cachedData ? cachedData.data : null;
     }
-    console.log(`Nevua: Fetching fresh market data for slug: ${slug}`);
     const fetchPromise = fetchMarketData(slug).then((data) => {
       lastFetchTime.set(cacheKey, now);
       if (data) {
@@ -274,7 +307,6 @@ var process = { env: { LOG_LEVEL: "error" } };
   }
   function injectAlertBox(container, marketData = null) {
     if (document.getElementById("pm-alert-box")) {
-      console.log("Nevua: Alert box already exists, skipping injection");
       return;
     }
     const data = marketData || { eventTitle: "", markets: [] };
@@ -293,7 +325,7 @@ var process = { env: { LOG_LEVEL: "error" } };
     display: flex;
     flex-direction: column;
   `;
-    const isEventPage = /^\/event\/[^/]+$/.test(window.location.pathname);
+    const isEventPage = /^\/event\/[^/]+$/.test(window.location.pathname) || window.location.pathname.startsWith("/sports");
     box.innerHTML = `
     <div style="display: flex; flex-direction: column; gap: 16px; height: 100%;">
       <!-- Tab Header -->

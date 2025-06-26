@@ -39,11 +39,19 @@ await build({
   }
 }); 
 
-// Copy icon to dist folder
+// Copy static assets to dist folder
 try {
   mkdirSync('dist', { recursive: true });
-  copyFileSync('icon128.png', 'dist/icon128.png');
-  console.log('✅ Icon copied to dist/icon128.png');
+  const staticFiles = [
+    ['icon128.png', 'dist/icon128.png'],
+    ['package.json', 'dist/package.json'],
+    ['README.md', 'dist/README.md'],
+    ['TERMS_OF_USE.txt', 'dist/TERMS_OF_USE.txt']
+  ];
+  for (const [src, dest] of staticFiles) {
+    copyFileSync(src, dest);
+  }
+  console.log('✅ Static assets copied to dist');
 } catch (err) {
-  console.error('❌ Failed to copy icon:', err.message);
+  console.error('❌ Failed to copy static assets:', err.message);
 } 
