@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Nevua Markets - Polymarket Price Alerts",
-  "version": "1.1.0",
-  "description": "Set price alerts on Polymarket markets.",
+  "name": "Nevua Markets - Real-time Polymarket Price Alerts",
+  "version": "1.1.1",
+  "description": "Set real-time price alerts on Polymarket events.",
   "permissions": ["notifications", "storage"],
   "host_permissions": ["https://polymarket.com/*"],
   "background": {
@@ -16,7 +16,7 @@
     }
   ],
   "action": {
-    "default_title": "Polymarket Alert",
+    "default_title": "Polymarket Alerts",
     "default_popup": "popup.html"
   },
   "icons": {

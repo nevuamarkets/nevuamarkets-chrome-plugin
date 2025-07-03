@@ -1,4 +1,4 @@
-var process = { env: { LOG_LEVEL: "warn" } };
+var process = { env: { LOG_LEVEL: "error" } };
 (() => {
   // popup.js
   var activeAlerts = [];
