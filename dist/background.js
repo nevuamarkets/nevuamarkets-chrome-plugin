@@ -1,4 +1,4 @@
-var process = { env: { LOG_LEVEL: "error" } };
+var process = { env: { LOG_LEVEL: "warn" } };
 (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -8503,6 +8503,30 @@ return {}
     }
   });
 
+  // node_modules/@nevuamarkets/poly-websockets/dist/types/PolymarketWebSocket.js
+  var require_PolymarketWebSocket = __commonJS({
+    "node_modules/@nevuamarkets/poly-websockets/dist/types/PolymarketWebSocket.js"(exports2) {
+      "use strict";
+      Object.defineProperty(exports2, "__esModule", { value: true });
+      exports2.isBookEvent = isBookEvent;
+      exports2.isLastTradePriceEvent = isLastTradePriceEvent;
+      exports2.isPriceChangeEvent = isPriceChangeEvent;
+      exports2.isTickSizeChangeEvent = isTickSizeChangeEvent;
+      function isBookEvent(event) {
+        return (event === null || event === void 0 ? void 0 : event.event_type) === "book";
+      }
+      function isLastTradePriceEvent(event) {
+        return (event === null || event === void 0 ? void 0 : event.event_type) === "last_trade_price";
+      }
+      function isPriceChangeEvent(event) {
+        return (event === null || event === void 0 ? void 0 : event.event_type) === "price_change";
+      }
+      function isTickSizeChangeEvent(event) {
+        return (event === null || event === void 0 ? void 0 : event.event_type) === "tick_size_change";
+      }
+    }
+  });
+
   // node_modules/tslib/tslib.es6.mjs
   var tslib_es6_exports = {};
   __export(tslib_es6_exports, {
@@ -10326,7 +10350,7 @@ return {}
       exports2.logger = void 0;
       var winston_1 = __importDefault2((init_winston(), __toCommonJS(winston_exports)));
       exports2.logger = winston_1.default.createLogger({
-        level: "error",
+        level: "warn",
         format: winston_1.default.format.combine(winston_1.default.format.timestamp(), winston_1.default.format.errors({ stack: true }), winston_1.default.format.colorize(), winston_1.default.format.printf(({ level, message, timestamp, ...rest }) => {
           const restString = Object.keys(rest).filter((key) => key !== "service").sort().map((key) => `${key}: ${JSON.stringify(rest[key])}`).join(", ");
           return `${timestamp} ${level}: ${message}${restString ? ` (${restString})` : ""}`;
@@ -10646,12 +10670,12 @@ return {}
          * Throws if the book is not found.
          */
         upsertPriceChange(event) {
-          const book = this.bookCache[event.asset_id];
-          if (!book) {
-            throw new Error(`Book not found for asset ${event.asset_id}`);
-          }
-          for (const change of event.changes) {
-            const { price, size, side } = change;
+          for (const priceChange of event.price_changes) {
+            const book = this.bookCache[priceChange.asset_id];
+            if (!book) {
+              throw new Error(`Book not found for asset ${priceChange.asset_id}`);
+            }
+            const { price, size, side } = priceChange;
             if (side === "BUY") {
               const i = book.bids.findIndex((bid) => bid.price === price);
               if (i !== -1) {
@@ -10812,30 +10836,6 @@ return {}
     }
   });
 
-  // node_modules/@nevuamarkets/poly-websockets/dist/types/PolymarketWebSocket.js
-  var require_PolymarketWebSocket = __commonJS({
-    "node_modules/@nevuamarkets/poly-websockets/dist/types/PolymarketWebSocket.js"(exports2) {
-      "use strict";
-      Object.defineProperty(exports2, "__esModule", { value: true });
-      exports2.isBookEvent = isBookEvent;
-      exports2.isLastTradePriceEvent = isLastTradePriceEvent;
-      exports2.isPriceChangeEvent = isPriceChangeEvent;
-      exports2.isTickSizeChangeEvent = isTickSizeChangeEvent;
-      function isBookEvent(event) {
-        return (event === null || event === void 0 ? void 0 : event.event_type) === "book";
-      }
-      function isLastTradePriceEvent(event) {
-        return (event === null || event === void 0 ? void 0 : event.event_type) === "last_trade_price";
-      }
-      function isPriceChangeEvent(event) {
-        return (event === null || event === void 0 ? void 0 : event.event_type) === "price_change";
-      }
-      function isTickSizeChangeEvent(event) {
-        return (event === null || event === void 0 ? void 0 : event.event_type) === "tick_size_change";
-      }
-    }
-  });
-
   // shims/crypto.js
   var crypto_exports = {};
   __export(crypto_exports, {
@@ -10913,14 +10913,33 @@ return {}
         setupEventHandlers() {
           const group = this.group;
           const handlers = this.handlers;
+          const currentWebSocket = group.wsClient;
+          if (!currentWebSocket) {
+            return;
+          }
           const handleOpen = async () => {
             var _a;
             if (group.assetIds.size === 0) {
               group.status = WebSocketSubscriptions_1.WebSocketStatus.CLEANUP;
               return;
             }
+            if (currentWebSocket !== group.wsClient) {
+              logger_1.logger.warn({
+                message: "handleOpen called for stale WebSocket instance",
+                groupId: group.groupId
+              });
+              return;
+            }
+            if (currentWebSocket.readyState !== ws_1.default.OPEN) {
+              logger_1.logger.warn({
+                message: "handleOpen called but WebSocket is not in OPEN state",
+                groupId: group.groupId,
+                readyState: currentWebSocket.readyState
+              });
+              return;
+            }
             group.status = WebSocketSubscriptions_1.WebSocketStatus.ALIVE;
-            group.wsClient.send(JSON.stringify({ assets_ids: Array.from(group.assetIds), type: "market" }));
+            currentWebSocket.send(JSON.stringify({ assets_ids: Array.from(group.assetIds), type: "market" }));
             await ((_a = handlers.onWSOpen) === null || _a === void 0 ? void 0 : _a.call(handlers, group.groupId, Array.from(group.assetIds)));
             this.pingInterval = setInterval(() => {
               if (group.assetIds.size === 0) {
@@ -10928,43 +10947,65 @@ return {}
                 group.status = WebSocketSubscriptions_1.WebSocketStatus.CLEANUP;
                 return;
               }
-              if (!group.wsClient) {
+              if (currentWebSocket !== group.wsClient) {
+                clearInterval(this.pingInterval);
+                return;
+              }
+              if (!currentWebSocket || currentWebSocket.readyState !== ws_1.default.OPEN) {
                 clearInterval(this.pingInterval);
                 group.status = WebSocketSubscriptions_1.WebSocketStatus.DEAD;
                 return;
               }
-              group.wsClient.ping();
+              currentWebSocket.ping();
             }, (0, crypto_1.randomInt)((0, ms_1.default)("15s"), (0, ms_1.default)("25s")));
           };
           const handleMessage = async (data) => {
             var _a, _b;
-            let events = [];
-            try {
-              const parsedData = JSON.parse(data.toString());
-              events = Array.isArray(parsedData) ? parsedData : [parsedData];
-            } catch (err) {
-              await ((_a = handlers.onError) === null || _a === void 0 ? void 0 : _a.call(handlers, new Error(`Not JSON: ${data.toString()}`)));
+            const messageStr = data.toString();
+            if (messageStr === "PONG") {
               return;
             }
-            events = lodash_1.default.filter(events, (event) => lodash_1.default.size(event.asset_id) > 0);
+            let events = [];
+            try {
+              const parsedData = JSON.parse(messageStr);
+              events = Array.isArray(parsedData) ? parsedData : [parsedData];
+            } catch (err) {
+              await ((_a = handlers.onError) === null || _a === void 0 ? void 0 : _a.call(handlers, new Error(`Not JSON: ${messageStr}`)));
+              return;
+            }
+            events = lodash_1.default.filter(events, (event) => {
+              if ((0, PolymarketWebSocket_1.isPriceChangeEvent)(event)) {
+                return event.price_changes && event.price_changes.length > 0;
+              }
+              return lodash_1.default.size(event.asset_id) > 0;
+            });
             const bookEvents = [];
             const lastTradeEvents = [];
             const tickEvents = [];
             const priceChangeEvents = [];
             for (const event of events) {
-              if (!group.assetIds.has(event.asset_id)) {
-                continue;
-              }
-              if ((0, PolymarketWebSocket_1.isBookEvent)(event)) {
-                bookEvents.push(event);
-              } else if ((0, PolymarketWebSocket_1.isLastTradePriceEvent)(event)) {
-                lastTradeEvents.push(event);
-              } else if ((0, PolymarketWebSocket_1.isTickSizeChangeEvent)(event)) {
-                tickEvents.push(event);
-              } else if ((0, PolymarketWebSocket_1.isPriceChangeEvent)(event)) {
-                priceChangeEvents.push(event);
+              if ((0, PolymarketWebSocket_1.isPriceChangeEvent)(event)) {
+                const relevantChanges = event.price_changes.filter((price_change_item) => group.assetIds.has(price_change_item.asset_id));
+                if (relevantChanges.length === 0) {
+                  continue;
+                }
+                priceChangeEvents.push({
+                  ...event,
+                  price_changes: relevantChanges
+                });
               } else {
-                await ((_b = handlers.onError) === null || _b === void 0 ? void 0 : _b.call(handlers, new Error(`Unknown event: ${JSON.stringify(event)}`)));
+                if (!group.assetIds.has(event.asset_id)) {
+                  continue;
+                }
+                if ((0, PolymarketWebSocket_1.isBookEvent)(event)) {
+                  bookEvents.push(event);
+                } else if ((0, PolymarketWebSocket_1.isLastTradePriceEvent)(event)) {
+                  lastTradeEvents.push(event);
+                } else if ((0, PolymarketWebSocket_1.isTickSizeChangeEvent)(event)) {
+                  tickEvents.push(event);
+                } else {
+                  await ((_b = handlers.onError) === null || _b === void 0 ? void 0 : _b.call(handlers, new Error(`Unknown event: ${JSON.stringify(event)}`)));
+                }
               }
             }
             await this.handleBookEvents(bookEvents);
@@ -10987,20 +11028,14 @@ return {}
             clearInterval(this.pingInterval);
             await ((_a = handlers.onWSClose) === null || _a === void 0 ? void 0 : _a.call(handlers, group.groupId, code, (reason === null || reason === void 0 ? void 0 : reason.toString()) || ""));
           };
-          if (group.wsClient) {
-            group.wsClient.removeAllListeners();
-            group.wsClient.on("open", handleOpen);
-            group.wsClient.on("message", handleMessage);
-            group.wsClient.on("pong", handlePong);
-            group.wsClient.on("error", handleError);
-            group.wsClient.on("close", handleClose);
-          }
+          currentWebSocket.removeAllListeners();
+          currentWebSocket.on("open", handleOpen);
+          currentWebSocket.on("message", handleMessage);
+          currentWebSocket.on("pong", handlePong);
+          currentWebSocket.on("error", handleError);
+          currentWebSocket.on("close", handleClose);
           if (group.assetIds.size === 0) {
             group.status = WebSocketSubscriptions_1.WebSocketStatus.CLEANUP;
-            return;
-          }
-          if (!group.wsClient) {
-            group.status = WebSocketSubscriptions_1.WebSocketStatus.DEAD;
             return;
           }
         }
@@ -11029,59 +11064,61 @@ return {}
               } catch (err) {
                 logger_1.logger.debug({
                   message: `Skipping derived future price calculation price_change: book not found for asset`,
-                  asset_id: event.asset_id,
                   event,
                   error: err === null || err === void 0 ? void 0 : err.message
                 });
                 continue;
               }
-              let spreadOver10Cents;
-              try {
-                spreadOver10Cents = this.bookCache.spreadOver(event.asset_id, 0.1);
-              } catch (err) {
-                logger_1.logger.debug({
-                  message: "Skipping derived future price calculation for price_change: error calculating spread",
-                  asset_id: event.asset_id,
-                  event,
-                  error: err === null || err === void 0 ? void 0 : err.message
-                });
-                continue;
-              }
-              if (!spreadOver10Cents) {
-                let newPrice;
+              const assetIds = event.price_changes.map((price_change_item) => price_change_item.asset_id);
+              for (const assetId of assetIds) {
+                let spreadOver10Cents;
                 try {
-                  newPrice = this.bookCache.midpoint(event.asset_id);
+                  spreadOver10Cents = this.bookCache.spreadOver(assetId, 0.1);
                 } catch (err) {
                   logger_1.logger.debug({
-                    message: "Skipping derived future price calculation for price_change: error calculating midpoint",
-                    asset_id: event.asset_id,
+                    message: "Skipping derived future price calculation for price_change: error calculating spread",
+                    asset_id: assetId,
                     event,
                     error: err === null || err === void 0 ? void 0 : err.message
                   });
                   continue;
                 }
-                const bookEntry = this.bookCache.getBookEntry(event.asset_id);
-                if (!bookEntry) {
-                  logger_1.logger.debug({
-                    message: "Skipping derived future price calculation price_change: book not found for asset",
-                    asset_id: event.asset_id,
-                    event
-                  });
-                  continue;
-                }
-                if (newPrice !== bookEntry.price) {
-                  bookEntry.price = newPrice;
-                  const priceUpdateEvent = {
-                    asset_id: event.asset_id,
-                    event_type: "price_update",
-                    triggeringEvent: event,
-                    timestamp: event.timestamp,
-                    book: { bids: bookEntry.bids, asks: bookEntry.asks },
-                    price: newPrice,
-                    midpoint: bookEntry.midpoint || "",
-                    spread: bookEntry.spread || ""
-                  };
-                  await ((_d = (_c = this.handlers).onPolymarketPriceUpdate) === null || _d === void 0 ? void 0 : _d.call(_c, [priceUpdateEvent]));
+                if (!spreadOver10Cents) {
+                  let newPrice;
+                  try {
+                    newPrice = this.bookCache.midpoint(assetId);
+                  } catch (err) {
+                    logger_1.logger.debug({
+                      message: "Skipping derived future price calculation for price_change: error calculating midpoint",
+                      asset_id: assetId,
+                      event,
+                      error: err === null || err === void 0 ? void 0 : err.message
+                    });
+                    continue;
+                  }
+                  const bookEntry = this.bookCache.getBookEntry(assetId);
+                  if (!bookEntry) {
+                    logger_1.logger.debug({
+                      message: "Skipping derived future price calculation price_change: book not found for asset",
+                      asset_id: assetId,
+                      event
+                    });
+                    continue;
+                  }
+                  if (newPrice !== bookEntry.price) {
+                    bookEntry.price = newPrice;
+                    const priceUpdateEvent = {
+                      asset_id: assetId,
+                      event_type: "price_update",
+                      triggeringEvent: event,
+                      timestamp: event.timestamp,
+                      book: { bids: bookEntry.bids, asks: bookEntry.asks },
+                      price: newPrice,
+                      midpoint: bookEntry.midpoint || "",
+                      spread: bookEntry.spread || ""
+                    };
+                    await ((_d = (_c = this.handlers).onPolymarketPriceUpdate) === null || _d === void 0 ? void 0 : _d.call(_c, [priceUpdateEvent]));
+                  }
                 }
               }
             }
@@ -11150,6 +11187,7 @@ return {}
       var ms_1 = __importDefault2(require_ms());
       var lodash_1 = __importDefault2(require_lodash());
       var bottleneck_1 = __importDefault2(require_lib());
+      var PolymarketWebSocket_1 = require_PolymarketWebSocket();
       var GroupRegistry_1 = require_GroupRegistry();
       var OrderBookCache_1 = require_OrderBookCache();
       var GroupSocket_1 = require_GroupSocket();
@@ -11223,15 +11261,31 @@ return {}
             */
         async actOnSubscribedEvents(events, action) {
           events = lodash_1.default.filter(events, (event) => {
-            const groupIndices = this.groupRegistry.getGroupIndicesForAsset(event.asset_id);
-            if (groupIndices.length > 1) {
-              logger_1.logger.warn({
-                message: "Found multiple groups for asset",
-                asset_id: event.asset_id,
-                group_indices: groupIndices
+            if ((0, PolymarketWebSocket_1.isPriceChangeEvent)(event)) {
+              return event.price_changes.some((price_change_item) => {
+                const groupIndices = this.groupRegistry.getGroupIndicesForAsset(price_change_item.asset_id);
+                if (groupIndices.length > 1) {
+                  logger_1.logger.warn({
+                    message: "Found multiple groups for asset",
+                    asset_id: price_change_item.asset_id,
+                    group_indices: groupIndices
+                  });
+                }
+                return groupIndices.length > 0;
               });
             }
-            return groupIndices.length > 0;
+            if ("asset_id" in event) {
+              const groupIndices = this.groupRegistry.getGroupIndicesForAsset(event.asset_id);
+              if (groupIndices.length > 1) {
+                logger_1.logger.warn({
+                  message: "Found multiple groups for asset",
+                  asset_id: event.asset_id,
+                  group_indices: groupIndices
+                });
+              }
+              return groupIndices.length > 0;
+            }
+            return false;
           });
           await (action === null || action === void 0 ? void 0 : action(events));
         }

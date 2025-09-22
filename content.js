@@ -86,6 +86,7 @@ setInterval(() => {
     // Only clear cache if slug actually changed (not just URL params)
     if (currentSlug !== lastSlug && lastSlug) {
       //console.log(`Nevua: Slug changed (accordion) from ${lastSlug} to ${currentSlug}, refreshing widget`);
+      ensureCacheInitialized();
       marketDataCache.delete(lastSlug);
     }
     lastSlug = currentSlug;
@@ -99,6 +100,7 @@ setInterval(() => {
     const existingBox2 = document.getElementById("pm-alert-box");
     if (existingBox2) existingBox2.remove();
     if (lastSlug) {
+      ensureCacheInitialized();
       marketDataCache.delete(lastSlug);
     }
     lastSlug = currentSlug;
@@ -116,16 +118,52 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// Global state for managing alerts
-let activeAlerts = [];
-let renderAlertsListCallback = null;
+// Global state for managing alerts - prevent re-initialization if already set
+if (typeof window.nevuaActiveAlerts === 'undefined') {
+  window.nevuaActiveAlerts = [];
+}
+if (typeof window.nevuaRenderAlertsListCallback === 'undefined') {
+  window.nevuaRenderAlertsListCallback = null;
+}
 
-// Rate limiting and caching for API requests
-let marketDataCache = new Map();
-let lastFetchTime = new Map();
-let pendingRequests = new Map(); // Track pending requests to prevent duplicates
+let activeAlerts = window.nevuaActiveAlerts;
+let renderAlertsListCallback = window.nevuaRenderAlertsListCallback;
+
+// Rate limiting and caching for API requests - prevent re-initialization if already set
+if (typeof window.nevuaMarketDataCache === 'undefined') {
+  window.nevuaMarketDataCache = new Map();
+}
+if (typeof window.nevuaLastFetchTime === 'undefined') {
+  window.nevuaLastFetchTime = new Map();
+}
+if (typeof window.nevuaPendingRequests === 'undefined') {
+  window.nevuaPendingRequests = new Map();
+}
+
+let marketDataCache = window.nevuaMarketDataCache;
+let lastFetchTime = window.nevuaLastFetchTime;
+let pendingRequests = window.nevuaPendingRequests; // Track pending requests to prevent duplicates
 const RATE_LIMIT_MS = 5000; // 5 seconds minimum between requests for same slug
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
+
+/**
+ * Ensures the cache Maps are properly initialized
+ * This prevents undefined errors during script re-injection or timing issues
+ */
+function ensureCacheInitialized() {
+  if (!window.nevuaMarketDataCache || !(window.nevuaMarketDataCache instanceof Map)) {
+    window.nevuaMarketDataCache = new Map();
+    marketDataCache = window.nevuaMarketDataCache;
+  }
+  if (!window.nevuaLastFetchTime || !(window.nevuaLastFetchTime instanceof Map)) {
+    window.nevuaLastFetchTime = new Map();
+    lastFetchTime = window.nevuaLastFetchTime;
+  }
+  if (!window.nevuaPendingRequests || !(window.nevuaPendingRequests instanceof Map)) {
+    window.nevuaPendingRequests = new Map();
+    pendingRequests = window.nevuaPendingRequests;
+  }
+}
 
 /**
  * Ensures websocket subscriptions match the set of currently ACTIVE and OPEN alerts
@@ -237,6 +275,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle alert updates from other tabs
   if (message.type === "alert_update") {
     activeAlerts = message.alerts;
+    window.nevuaActiveAlerts = activeAlerts;
     if (renderAlertsListCallback) renderAlertsListCallback();
     ensureSubscriptions();
     return false;
@@ -256,6 +295,7 @@ async function handlePriceUpdates(events) {
     setTimeout(() => {
       loadAlertsFromStorage().then(alerts => {
         activeAlerts = alerts;
+        window.nevuaActiveAlerts = activeAlerts;
         renderAlertsListCallback();
       });
     }, 100);
@@ -316,6 +356,9 @@ function getSlugFromUrl() {
  * @returns {Promise<Object|null>} - The processed market data or null if failed
  */
 async function fetchMarketDataWithCache(slug) {
+  // Ensure cache Maps are properly initialized
+  ensureCacheInitialized();
+  
   const now = Date.now();
   const cacheKey = slug;
   
@@ -751,10 +794,12 @@ function injectAlertBox(container, marketData = null) {
 
   // Set up the callback for live updates
   renderAlertsListCallback = renderAlertsList;
+  window.nevuaRenderAlertsListCallback = renderAlertsListCallback;
 
   // Initialize - load alerts from storage first
   loadAlertsFromStorage().then(savedAlerts => {
     activeAlerts = savedAlerts;
+    window.nevuaActiveAlerts = activeAlerts;
     renderAlertsList();
     ensureSubscriptions();
     
@@ -890,6 +935,7 @@ function setupFormHandlers(box, marketData) {
       );
       
       activeAlerts.push(newAlert);
+      window.nevuaActiveAlerts = activeAlerts;
       
       saveAlertsToStorage();
       renderAlertsList();
@@ -1129,6 +1175,7 @@ function renderAlertsList() {
               activeAlerts.splice(index, 1);
             }
           });
+          window.nevuaActiveAlerts = activeAlerts;
           
           // Save and refresh
           saveAlertsToStorage();
@@ -1313,6 +1360,7 @@ function deleteAlert(alertId) {
   const alertIndex = activeAlerts.findIndex(a => a.id === alertId);
   if (alertIndex !== -1) {
     activeAlerts.splice(alertIndex, 1);
+    window.nevuaActiveAlerts = activeAlerts;
     saveAlertsToStorage();
     renderAlertsList();
     ensureSubscriptions();

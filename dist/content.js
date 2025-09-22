@@ -1,4 +1,4 @@
-var process = { env: { LOG_LEVEL: "error" } };
+var process = { env: { LOG_LEVEL: "warn" } };
 (() => {
   // content.js
   async function waitForTradeBox() {
@@ -61,6 +61,7 @@ var process = { env: { LOG_LEVEL: "error" } };
       const existingBox = document.getElementById("pm-alert-box");
       if (existingBox) existingBox.remove();
       if (currentSlug !== lastSlug && lastSlug) {
+        ensureCacheInitialized();
         marketDataCache.delete(lastSlug);
       }
       lastSlug = currentSlug;
@@ -70,6 +71,7 @@ var process = { env: { LOG_LEVEL: "error" } };
       const existingBox2 = document.getElementById("pm-alert-box");
       if (existingBox2) existingBox2.remove();
       if (lastSlug) {
+        ensureCacheInitialized();
         marketDataCache.delete(lastSlug);
       }
       lastSlug = currentSlug;
@@ -83,13 +85,42 @@ var process = { env: { LOG_LEVEL: "error" } };
       }, 100);
     }
   });
-  var activeAlerts = [];
-  var renderAlertsListCallback = null;
-  var marketDataCache = /* @__PURE__ */ new Map();
-  var lastFetchTime = /* @__PURE__ */ new Map();
-  var pendingRequests = /* @__PURE__ */ new Map();
+  if (typeof window.nevuaActiveAlerts === "undefined") {
+    window.nevuaActiveAlerts = [];
+  }
+  if (typeof window.nevuaRenderAlertsListCallback === "undefined") {
+    window.nevuaRenderAlertsListCallback = null;
+  }
+  var activeAlerts = window.nevuaActiveAlerts;
+  var renderAlertsListCallback = window.nevuaRenderAlertsListCallback;
+  if (typeof window.nevuaMarketDataCache === "undefined") {
+    window.nevuaMarketDataCache = /* @__PURE__ */ new Map();
+  }
+  if (typeof window.nevuaLastFetchTime === "undefined") {
+    window.nevuaLastFetchTime = /* @__PURE__ */ new Map();
+  }
+  if (typeof window.nevuaPendingRequests === "undefined") {
+    window.nevuaPendingRequests = /* @__PURE__ */ new Map();
+  }
+  var marketDataCache = window.nevuaMarketDataCache;
+  var lastFetchTime = window.nevuaLastFetchTime;
+  var pendingRequests = window.nevuaPendingRequests;
   var RATE_LIMIT_MS = 5e3;
   var CACHE_TTL_MS = 5 * 60 * 1e3;
+  function ensureCacheInitialized() {
+    if (!window.nevuaMarketDataCache || !(window.nevuaMarketDataCache instanceof Map)) {
+      window.nevuaMarketDataCache = /* @__PURE__ */ new Map();
+      marketDataCache = window.nevuaMarketDataCache;
+    }
+    if (!window.nevuaLastFetchTime || !(window.nevuaLastFetchTime instanceof Map)) {
+      window.nevuaLastFetchTime = /* @__PURE__ */ new Map();
+      lastFetchTime = window.nevuaLastFetchTime;
+    }
+    if (!window.nevuaPendingRequests || !(window.nevuaPendingRequests instanceof Map)) {
+      window.nevuaPendingRequests = /* @__PURE__ */ new Map();
+      pendingRequests = window.nevuaPendingRequests;
+    }
+  }
   async function ensureSubscriptions() {
     const needed = activeAlerts.filter((alert) => alert.status === "Active" && !alert.closed).map((alert) => alert.clobtokenId);
     chrome.runtime.sendMessage({
@@ -164,6 +195,7 @@ var process = { env: { LOG_LEVEL: "error" } };
     }
     if (message.type === "alert_update") {
       activeAlerts = message.alerts;
+      window.nevuaActiveAlerts = activeAlerts;
       if (renderAlertsListCallback) renderAlertsListCallback();
       ensureSubscriptions();
       return false;
@@ -174,6 +206,7 @@ var process = { env: { LOG_LEVEL: "error" } };
       setTimeout(() => {
         loadAlertsFromStorage().then((alerts) => {
           activeAlerts = alerts;
+          window.nevuaActiveAlerts = activeAlerts;
           renderAlertsListCallback();
         });
       }, 100);
@@ -210,6 +243,7 @@ var process = { env: { LOG_LEVEL: "error" } };
     return null;
   }
   async function fetchMarketDataWithCache(slug) {
+    ensureCacheInitialized();
     const now = Date.now();
     const cacheKey = slug;
     const cachedData = marketDataCache.get(cacheKey);
@@ -557,8 +591,10 @@ var process = { env: { LOG_LEVEL: "error" } };
     }
     setupTabHandlers(box);
     renderAlertsListCallback = renderAlertsList;
+    window.nevuaRenderAlertsListCallback = renderAlertsListCallback;
     loadAlertsFromStorage().then((savedAlerts) => {
       activeAlerts = savedAlerts;
+      window.nevuaActiveAlerts = activeAlerts;
       renderAlertsList();
       ensureSubscriptions();
       const activeCount = activeAlerts.filter((a) => a.status === "Active" && !a.closed).length;
@@ -654,6 +690,7 @@ var process = { env: { LOG_LEVEL: "error" } };
           target
         );
         activeAlerts.push(newAlert);
+        window.nevuaActiveAlerts = activeAlerts;
         saveAlertsToStorage();
         renderAlertsList();
         ensureSubscriptions();
@@ -836,6 +873,7 @@ var process = { env: { LOG_LEVEL: "error" } };
                 activeAlerts.splice(index, 1);
               }
             });
+            window.nevuaActiveAlerts = activeAlerts;
             saveAlertsToStorage();
             renderAlertsList();
             ensureSubscriptions();
@@ -978,6 +1016,7 @@ var process = { env: { LOG_LEVEL: "error" } };
     const alertIndex = activeAlerts.findIndex((a) => a.id === alertId);
     if (alertIndex !== -1) {
       activeAlerts.splice(alertIndex, 1);
+      window.nevuaActiveAlerts = activeAlerts;
       saveAlertsToStorage();
       renderAlertsList();
       ensureSubscriptions();
