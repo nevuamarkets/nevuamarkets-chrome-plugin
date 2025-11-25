@@ -307,8 +307,8 @@ async function handlePriceUpdates(events) {
  * @returns {string|null} - The slug from the URL or null if not found
  */
 function getSlugFromUrl() {
-  // Handle classic /event/<slug> pages first
-  const eventMatch = window.location.pathname.match(/^\/event\/([^/]+)$/);
+  // Handle classic /event/<slug> pages first (extract only the first slug)
+  const eventMatch = window.location.pathname.match(/^\/event\/([^/]+)/);
   if (eventMatch) {
     return eventMatch[1];
   }
@@ -554,7 +554,7 @@ function injectAlertBox(container, marketData = null) {
   `;
 
   // Allow alert creation on /event/<slug> and /sports pages
-  const isEventPage = /^\/event\/[^/]+$/.test(window.location.pathname) || window.location.pathname.startsWith('/sports');
+  const isEventPage = /^\/event\/[^/]+/.test(window.location.pathname) || window.location.pathname.startsWith('/sports');
   
   box.innerHTML = `
     <div style="display: flex; flex-direction: column; gap: 16px; height: 100%;">

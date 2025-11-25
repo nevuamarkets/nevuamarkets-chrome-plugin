@@ -213,7 +213,7 @@ var process = { env: { LOG_LEVEL: "warn" } };
     }
   }
   function getSlugFromUrl() {
-    const eventMatch = window.location.pathname.match(/^\/event\/([^/]+)$/);
+    const eventMatch = window.location.pathname.match(/^\/event\/([^/]+)/);
     if (eventMatch) {
       return eventMatch[1];
     }
@@ -359,7 +359,7 @@ var process = { env: { LOG_LEVEL: "warn" } };
     display: flex;
     flex-direction: column;
   `;
-    const isEventPage = /^\/event\/[^/]+$/.test(window.location.pathname) || window.location.pathname.startsWith("/sports");
+    const isEventPage = /^\/event\/[^/]+/.test(window.location.pathname) || window.location.pathname.startsWith("/sports");
     box.innerHTML = `
     <div style="display: flex; flex-direction: column; gap: 16px; height: 100%;">
       <!-- Tab Header -->
