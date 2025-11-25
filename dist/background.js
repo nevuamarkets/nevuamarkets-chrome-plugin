@@ -1,4 +1,4 @@
-var process = { env: { LOG_LEVEL: "warn" } };
+var process = { env: { LOG_LEVEL: "error" } };
 (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -10284,6 +10284,68 @@ return {}
     }
   });
 
+  // shims/ws.js
+  var ws_exports = {};
+  __export(ws_exports, {
+    default: () => ws_default
+  });
+  var WSWrapper, ws_default;
+  var init_ws = __esm({
+    "shims/ws.js"() {
+      WSWrapper = class {
+        constructor(url) {
+          this._ws = new WebSocket(url);
+          this._listeners = /* @__PURE__ */ new Map();
+        }
+        /**
+         * Node-style event emitter interface .on(event, handler)
+         * Maps to browser WebSocket addEventListener.
+         */
+        on(event, handler) {
+          if (!this._listeners.has(event)) this._listeners.set(event, /* @__PURE__ */ new Set());
+          this._listeners.get(event).add(handler);
+          if (event === "message") {
+            const wrapped = (e) => {
+              const raw = e && "data" in e ? e.data : "";
+              const dataWrapper = {
+                toString: () => {
+                  if (typeof raw === "string") return raw;
+                  if (raw instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(raw));
+                  if (raw && raw.buffer) return new TextDecoder().decode(raw);
+                  return "";
+                }
+              };
+              handler(dataWrapper);
+            };
+            this._listeners.get(event).add(wrapped);
+            this._ws.addEventListener("message", wrapped);
+            return;
+          }
+          this._ws.addEventListener(event, handler);
+        }
+        /** remove all registered listeners (used before re-attaching) */
+        removeAllListeners() {
+          for (const [event, handlers] of this._listeners.entries()) {
+            for (const h of handlers) {
+              this._ws.removeEventListener(event, h);
+            }
+          }
+          this._listeners.clear();
+        }
+        send(data) {
+          this._ws.readyState === 1 ? this._ws.send(data) : null;
+        }
+        /** ping is a noop in browser (no TCP ping) */
+        ping() {
+        }
+        close(code, reason) {
+          this._ws.close(code, reason);
+        }
+      };
+      ws_default = WSWrapper;
+    }
+  });
+
   // node_modules/@nevuamarkets/poly-websockets/dist/types/WebSocketSubscriptions.js
   var require_WebSocketSubscriptions = __commonJS({
     "node_modules/@nevuamarkets/poly-websockets/dist/types/WebSocketSubscriptions.js"(exports2) {
@@ -10350,7 +10412,7 @@ return {}
       exports2.logger = void 0;
       var winston_1 = __importDefault2((init_winston(), __toCommonJS(winston_exports)));
       exports2.logger = winston_1.default.createLogger({
-        level: "warn",
+        level: "error",
         format: winston_1.default.format.combine(winston_1.default.format.timestamp(), winston_1.default.format.errors({ stack: true }), winston_1.default.format.colorize(), winston_1.default.format.printf(({ level, message, timestamp, ...rest }) => {
           const restString = Object.keys(rest).filter((key) => key !== "service").sort().map((key) => `${key}: ${JSON.stringify(rest[key])}`).join(", ");
           return `${timestamp} ${level}: ${message}${restString ? ` (${restString})` : ""}`;
@@ -10385,6 +10447,7 @@ return {}
       var async_mutex_1 = require_lib2();
       var lodash_1 = __importDefault2(require_lodash());
       var uuid_1 = require_cjs_browser();
+      var ws_1 = __importDefault2((init_ws(), __toCommonJS(ws_exports)));
       var WebSocketSubscriptions_1 = require_WebSocketSubscriptions();
       var logger_1 = require_logger();
       var wsGroups = [];
@@ -10456,6 +10519,29 @@ return {}
          */
         findGroupById(groupId) {
           return wsGroups.find((g) => g.groupId === groupId);
+        }
+        /**
+         * Get statistics about the current state of the registry.
+         *
+         * Returns an object with:
+         * - openWebSockets: The number of websockets that are currently in OPEN state
+         * - subscribedAssetIds: The number of unique asset IDs that are currently subscribed
+         */
+        getStatistics() {
+          let openWebSockets = 0;
+          const uniqueAssetIds = /* @__PURE__ */ new Set();
+          for (const group of wsGroups) {
+            if (group.wsClient && group.wsClient.readyState === ws_1.default.OPEN) {
+              openWebSockets++;
+            }
+            for (const assetId of group.assetIds) {
+              uniqueAssetIds.add(assetId);
+            }
+          }
+          return {
+            openWebSockets,
+            subscribedAssetIds: uniqueAssetIds.size
+          };
         }
         /**
          * Atomically remove **all** groups from the registry and return them so the
@@ -10774,68 +10860,6 @@ return {}
     }
   });
 
-  // shims/ws.js
-  var ws_exports = {};
-  __export(ws_exports, {
-    default: () => ws_default
-  });
-  var WSWrapper, ws_default;
-  var init_ws = __esm({
-    "shims/ws.js"() {
-      WSWrapper = class {
-        constructor(url) {
-          this._ws = new WebSocket(url);
-          this._listeners = /* @__PURE__ */ new Map();
-        }
-        /**
-         * Node-style event emitter interface .on(event, handler)
-         * Maps to browser WebSocket addEventListener.
-         */
-        on(event, handler) {
-          if (!this._listeners.has(event)) this._listeners.set(event, /* @__PURE__ */ new Set());
-          this._listeners.get(event).add(handler);
-          if (event === "message") {
-            const wrapped = (e) => {
-              const raw = e && "data" in e ? e.data : "";
-              const dataWrapper = {
-                toString: () => {
-                  if (typeof raw === "string") return raw;
-                  if (raw instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(raw));
-                  if (raw && raw.buffer) return new TextDecoder().decode(raw);
-                  return "";
-                }
-              };
-              handler(dataWrapper);
-            };
-            this._listeners.get(event).add(wrapped);
-            this._ws.addEventListener("message", wrapped);
-            return;
-          }
-          this._ws.addEventListener(event, handler);
-        }
-        /** remove all registered listeners (used before re-attaching) */
-        removeAllListeners() {
-          for (const [event, handlers] of this._listeners.entries()) {
-            for (const h of handlers) {
-              this._ws.removeEventListener(event, h);
-            }
-          }
-          this._listeners.clear();
-        }
-        send(data) {
-          this._ws.readyState === 1 ? this._ws.send(data) : null;
-        }
-        /** ping is a noop in browser (no TCP ping) */
-        ping() {
-        }
-        close(code, reason) {
-          this._ws.close(code, reason);
-        }
-      };
-      ws_default = WSWrapper;
-    }
-  });
-
   // shims/crypto.js
   var crypto_exports = {};
   __export(crypto_exports, {
@@ -10960,58 +10984,66 @@ return {}
             }, (0, crypto_1.randomInt)((0, ms_1.default)("15s"), (0, ms_1.default)("25s")));
           };
           const handleMessage = async (data) => {
-            var _a, _b;
-            const messageStr = data.toString();
-            if (messageStr === "PONG") {
-              return;
-            }
-            let events = [];
+            var _a, _b, _c;
             try {
-              const parsedData = JSON.parse(messageStr);
-              events = Array.isArray(parsedData) ? parsedData : [parsedData];
-            } catch (err) {
-              await ((_a = handlers.onError) === null || _a === void 0 ? void 0 : _a.call(handlers, new Error(`Not JSON: ${messageStr}`)));
-              return;
-            }
-            events = lodash_1.default.filter(events, (event) => {
-              if ((0, PolymarketWebSocket_1.isPriceChangeEvent)(event)) {
-                return event.price_changes && event.price_changes.length > 0;
+              const messageStr = data.toString();
+              const normalizedMessageStr = messageStr.trim().toUpperCase();
+              if (normalizedMessageStr === "PONG") {
+                return;
               }
-              return lodash_1.default.size(event.asset_id) > 0;
-            });
-            const bookEvents = [];
-            const lastTradeEvents = [];
-            const tickEvents = [];
-            const priceChangeEvents = [];
-            for (const event of events) {
-              if ((0, PolymarketWebSocket_1.isPriceChangeEvent)(event)) {
-                const relevantChanges = event.price_changes.filter((price_change_item) => group.assetIds.has(price_change_item.asset_id));
-                if (relevantChanges.length === 0) {
-                  continue;
+              let events = [];
+              try {
+                const parsedData = JSON.parse(messageStr);
+                events = Array.isArray(parsedData) ? parsedData : [parsedData];
+              } catch (err) {
+                await ((_a = handlers.onError) === null || _a === void 0 ? void 0 : _a.call(handlers, new Error(`Not JSON: ${messageStr}`)));
+                return;
+              }
+              events = lodash_1.default.filter(events, (event) => {
+                if (!event) {
+                  return false;
                 }
-                priceChangeEvents.push({
-                  ...event,
-                  price_changes: relevantChanges
-                });
-              } else {
-                if (!group.assetIds.has(event.asset_id)) {
-                  continue;
+                if ((0, PolymarketWebSocket_1.isPriceChangeEvent)(event)) {
+                  return event.price_changes && event.price_changes.length > 0;
                 }
-                if ((0, PolymarketWebSocket_1.isBookEvent)(event)) {
-                  bookEvents.push(event);
-                } else if ((0, PolymarketWebSocket_1.isLastTradePriceEvent)(event)) {
-                  lastTradeEvents.push(event);
-                } else if ((0, PolymarketWebSocket_1.isTickSizeChangeEvent)(event)) {
-                  tickEvents.push(event);
+                return lodash_1.default.size(event.asset_id) > 0;
+              });
+              const bookEvents = [];
+              const lastTradeEvents = [];
+              const tickEvents = [];
+              const priceChangeEvents = [];
+              for (const event of events) {
+                if ((0, PolymarketWebSocket_1.isPriceChangeEvent)(event)) {
+                  const relevantChanges = event.price_changes.filter((price_change_item) => group.assetIds.has(price_change_item.asset_id));
+                  if (relevantChanges.length === 0) {
+                    continue;
+                  }
+                  priceChangeEvents.push({
+                    ...event,
+                    price_changes: relevantChanges
+                  });
                 } else {
-                  await ((_b = handlers.onError) === null || _b === void 0 ? void 0 : _b.call(handlers, new Error(`Unknown event: ${JSON.stringify(event)}`)));
+                  if (!group.assetIds.has(event.asset_id)) {
+                    continue;
+                  }
+                  if ((0, PolymarketWebSocket_1.isBookEvent)(event)) {
+                    bookEvents.push(event);
+                  } else if ((0, PolymarketWebSocket_1.isLastTradePriceEvent)(event)) {
+                    lastTradeEvents.push(event);
+                  } else if ((0, PolymarketWebSocket_1.isTickSizeChangeEvent)(event)) {
+                    tickEvents.push(event);
+                  } else {
+                    await ((_b = handlers.onError) === null || _b === void 0 ? void 0 : _b.call(handlers, new Error(`Unknown event: ${JSON.stringify(event)}`)));
+                  }
                 }
               }
+              await this.handleBookEvents(bookEvents);
+              await this.handleTickEvents(tickEvents);
+              await this.handlePriceChangeEvents(priceChangeEvents);
+              await this.handleLastTradeEvents(lastTradeEvents);
+            } catch (err) {
+              await ((_c = handlers.onError) === null || _c === void 0 ? void 0 : _c.call(handlers, new Error(`Error handling message: ${err}`)));
             }
-            await this.handleBookEvents(bookEvents);
-            await this.handleTickEvents(tickEvents);
-            await this.handlePriceChangeEvents(priceChangeEvents);
-            await this.handleLastTradeEvents(lastTradeEvents);
           };
           const handlePong = () => {
             group.groupId;
@@ -11338,6 +11370,16 @@ return {}
           } catch (err) {
             await ((_b = (_a = this.handlers).onError) === null || _b === void 0 ? void 0 : _b.call(_a, err));
           }
+        }
+        /*
+                Returns statistics about the current state of the subscription manager.
+        
+                Returns an object with:
+                - openWebSockets: The number of websockets that are currently in OPEN state
+                - subscribedAssetIds: The number of unique asset IDs that are currently subscribed
+            */
+        getStatistics() {
+          return this.groupRegistry.getStatistics();
         }
         async createWebSocketClient(groupId, handlers) {
           var _a, _b;
